@@ -35,5 +35,5 @@ impl From<LendingError> for String {
             LendingError::LoanExpired => "Loan has expired".into(),
             LendingError::CollateralSeized => "Collateral has been seized".into(),
         }
-    }
+    } 
 } 
