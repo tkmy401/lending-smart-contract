@@ -1,0 +1,48 @@
+[package]
+name = "lending-smart-contract"
+version = "0.1.0"
+edition = "2021"
+authors = ["Your Name <your.email@example.com>"]
+description = "A professional lending smart contract built with Rust"
+license = "MIT"
+
+[dependencies]
+# Core dependencies for smart contract development
+ink = { version = "4.0.0", default-features = false }
+scale = { version = "2.0.0", default-features = false }
+scale-info = { version = "2.0.0", default-features = false, features = ["derive"] }
+
+# Additional utilities
+ink_storage = { version = "4.0.0", default-features = false }
+ink_env = { version = "4.0.0", default-features = false }
+ink_prelude = { version = "4.0.0", default-features = false }
+
+# Development dependencies
+ink_e2e = { version = "4.0.0", default-features = false }
+
+[lib]
+crate-type = [
+    "cdylib",
+    "rlib",
+]
+
+[features]
+default = ["std"]
+std = [
+    "ink/std",
+    "scale/std",
+    "scale-info/std",
+    "ink_storage/std",
+    "ink_env/std",
+    "ink_prelude/std",
+]
+ink-as-dependency = []
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+opt-level = "z"
+lto = true
+
+[profile.release.build-override]
+opt-level = 3 

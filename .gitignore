@@ -1,0 +1,29 @@
+# Rust build artifacts
+target/
+**/*.rs.bk
+*.pdb
+
+# Contract build artifacts
+*.wasm
+*.contract
+*.json
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Environment files
+.env
+.env.local
+
+# Cargo lock (uncomment if you want to commit it)
+# Cargo.lock 
