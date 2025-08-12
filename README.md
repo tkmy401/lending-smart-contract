@@ -22,7 +22,9 @@ lending-smart-contract/
 │   ├── types.rs            # Data structures and types
 │   └── errors.rs           # Custom error definitions
 ├── tests/
-│   └── lending_contract_tests.rs # Comprehensive test suite
+│   └── lending_contract_tests.rs # Test suite (requires updates for ink! 5.x)
+├── examples/
+│   └── basic_usage.rs      # Usage examples (requires updates for ink! 5.x)
 ├── Cargo.toml              # Project dependencies and configuration
 └── README.md               # This file
 ```
@@ -31,7 +33,7 @@ lending-smart-contract/
 
 - Rust 1.70.0 or later
 - Cargo package manager
-- ink! toolchain
+- ink! 5.x toolchain
 
 ## Installation
 
@@ -41,15 +43,23 @@ git clone <repository-url>
 cd lending-smart-contract
 ```
 
-2. Install ink! toolchain:
+2. Build the contract:
 ```bash
-cargo install cargo-contract --locked --git https://github.com/paritytech/cargo-contract
+cargo build
 ```
 
-3. Build the contract:
-```bash
-cargo contract build
-```
+## Current Status
+
+✅ **Core Contract**: Successfully compiles and builds  
+⚠️ **Tests & Examples**: Require updates for ink! 5.x compatibility  
+🔧 **Dependencies**: Updated to use ink! 5.1.1 with compatible crates
+
+## Dependencies
+
+The project uses the following key dependencies:
+- `ink = "5.1.1"` - Core ink! framework
+- `parity-scale-codec = "3.6.0"` - SCALE encoding/decoding
+- `scale-info = "2.11.6"` - Type information for ink! contracts
 
 ## Usage
 
@@ -58,8 +68,10 @@ cargo contract build
 After building, you can deploy the contract to a Substrate-based blockchain:
 
 ```bash
-cargo contract upload --suri //Alice
-cargo contract instantiate --suri //Alice
+# Build the contract
+cargo build --release
+
+# The compiled contract will be available in target/ink/
 ```
 
 ### Core Functions
@@ -94,16 +106,14 @@ get_total_liquidity() -> Balance
 
 ## Testing
 
-Run the test suite:
+Currently, the test suite requires updates for ink! 5.x compatibility. The main contract compiles successfully:
 
 ```bash
+# Build the contract (works)
+cargo build
+
+# Run tests (requires updates)
 cargo test
-```
-
-Run end-to-end tests:
-
-```bash
-cargo test --features e2e-tests
 ```
 
 ## Security Features
@@ -121,6 +131,23 @@ The contract includes several configurable parameters:
 - `protocol_fee`: Protocol fee in basis points (default: 50 = 0.5%)
 - `min_collateral_ratio`: Minimum collateral ratio (default: 150 = 150%)
 - `max_interest_rate`: Maximum allowed interest rate (default: 10000 = 100%)
+
+## Recent Fixes Applied
+
+The following issues have been resolved:
+- ✅ Fixed compilation errors with ink! 5.x compatibility
+- ✅ Updated dependencies to use compatible versions
+- ✅ Added missing `TypeInfo` derive macros
+- ✅ Fixed type mismatches and import issues
+- ✅ Corrected module structure and exports
+
+## Next Steps
+
+To complete the project setup:
+1. Update test suite for ink! 5.x compatibility
+2. Update examples for ink! 5.x compatibility
+3. Add comprehensive integration tests
+4. Implement additional security features
 
 ## Contributing
 
