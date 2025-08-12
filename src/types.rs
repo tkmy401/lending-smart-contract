@@ -1,8 +1,9 @@
 use ink_prelude::vec::Vec;
-use ink_storage::traits::StorageLayout;
-use scale::{Decode, Encode};
+use ink::storage::traits::StorageLayout;
+use parity_scale_codec::{Decode, Encode};
+use scale_info::TypeInfo;
 
-#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq)]
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
 #[cfg_attr(feature = "std", derive(StorageLayout))]
 pub struct Loan {
     pub id: u64,
@@ -17,7 +18,7 @@ pub struct Loan {
     pub due_date: u64,
 }
 
-#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq)]
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
 #[cfg_attr(feature = "std", derive(StorageLayout))]
 pub enum LoanStatus {
     Pending,
@@ -27,7 +28,7 @@ pub enum LoanStatus {
     Liquidated,
 }
 
-#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq)]
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
 #[cfg_attr(feature = "std", derive(StorageLayout))]
 pub struct UserProfile {
     pub total_borrowed: Balance,
@@ -39,4 +40,4 @@ pub struct UserProfile {
 
 pub type AccountId = <ink_env::DefaultEnvironment as ink_env::Environment>::AccountId;
 pub type Balance = <ink_env::DefaultEnvironment as ink_env::Environment>::Balance;
-pub type BlockNumber = <ink_env::DefaultEnvironment as ink_env::Environment>::BlockNumber; 
+pub type BlockNumber = u64; 

@@ -1,9 +1,7 @@
-use ink::contract;
 use ink::storage::Mapping;
 use ink_prelude::vec::Vec;
-use ink_prelude::string::String;
 
-use crate::types::{Loan, LoanStatus, UserProfile, AccountId, Balance, BlockNumber};
+use crate::types::{Loan, LoanStatus, UserProfile};
 use crate::errors::LendingError;
 
 #[ink::contract]
@@ -97,7 +95,7 @@ pub mod lending_contract {
             }
 
             let loan_id = self.total_loans + 1;
-            let current_block = self.env().block_number();
+            let current_block = self.env().block_number() as u64;
             
             let loan = Loan {
                 id: loan_id,
