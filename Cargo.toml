@@ -8,17 +8,14 @@ license = "MIT"
 
 [dependencies]
 # Core dependencies for smart contract development
-ink = { version = "4.0.0", default-features = false }
-scale = { version = "2.0.0", default-features = false }
-scale-info = { version = "2.0.0", default-features = false, features = ["derive"] }
+ink = { version = "5.1.1", default-features = false }
+parity-scale-codec = { version = "3.6.0", default-features = false, features = ["derive"] }
+scale-info = { version = "2.11.6", default-features = false, features = ["derive"] }
 
 # Additional utilities
-ink_storage = { version = "4.0.0", default-features = false }
-ink_env = { version = "4.0.0", default-features = false }
-ink_prelude = { version = "4.0.0", default-features = false }
-
-# Development dependencies
-ink_e2e = { version = "4.0.0", default-features = false }
+ink_storage = { version = "5.1.1", default-features = false }
+ink_env = { version = "5.1.1", default-features = false }
+ink_prelude = { version = "5.1.1", default-features = false }
 
 [lib]
 crate-type = [
@@ -30,7 +27,7 @@ crate-type = [
 default = ["std"]
 std = [
     "ink/std",
-    "scale/std",
+    "parity-scale-codec/std",
     "scale-info/std",
     "ink_storage/std",
     "ink_env/std",

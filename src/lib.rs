@@ -4,6 +4,6 @@ pub mod lending_contract;
 pub mod types;
 pub mod errors;
 
-pub use lending_contract::LendingContract;
+pub use lending_contract::lending_contract::LendingContract;
 pub use types::*;
 pub use errors::*; 
