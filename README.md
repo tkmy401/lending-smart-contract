@@ -25,6 +25,7 @@ lending-smart-contract/
 │   └── lending_contract_tests.rs # Test suite (requires updates for ink! 5.x)
 ├── examples/
 │   └── basic_usage.rs      # Usage examples (requires updates for ink! 5.x)
+│   └── advanced_features.rs 
 ├── Cargo.toml              # Project dependencies and configuration
 └── README.md               # This file
 ```
@@ -39,7 +40,7 @@ lending-smart-contract/
 
 1. Clone the repository:
 ```bash
-git clone <repository-url>
+git clone https://github.com/tkmy401/lending-smart-contract.git
 cd lending-smart-contract
 ```
 
