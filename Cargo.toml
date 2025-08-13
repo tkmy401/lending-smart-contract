@@ -1,8 +1,8 @@
 [package]
 name = "lending-smart-contract"
 version = "0.1.0"
-edition = "2021"
-authors = ["Your Name <your.email@example.com>"]
+edition = "2025"
+authors = ["tkmy401 <hirokiyoshigawa@gmail.com>"]
 description = "A professional lending smart contract built with Rust"
 license = "MIT"
 
