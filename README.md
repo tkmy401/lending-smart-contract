@@ -12,6 +12,21 @@ A professional and secure lending smart contract built with Rust using the ink! 
 - **Event System**: Comprehensive event logging for all operations
 - **Security Features**: Input validation, access control, and error handling
 
+## 🚀 Feature Roadmap
+
+For a comprehensive overview of planned features and development phases, see **[FEATURE_ROADMAP.md](./FEATURE_ROADMAP.md)**.
+
+**Current Phase**: Core contract implementation ✅  
+**Next Phase**: Enhanced lending features (early repayment, partial payments, loan extensions)
+
+The roadmap includes 8 development phases covering:
+- Core lending enhancements
+- Advanced financial features
+- Liquidity pool management
+- Risk management & security
+- DeFi integrations
+- Performance optimizations
+
 ## Project Structure
 
 ```
@@ -24,10 +39,13 @@ lending-smart-contract/
 ├── tests/
 │   └── lending_contract_tests.rs # Test suite (requires updates for ink! 5.x)
 ├── examples/
-│   └── basic_usage.rs      # Usage examples (requires updates for ink! 5.x)
-│   └── advanced_features.rs 
+│   ├── basic_usage.rs      # Basic usage examples
+│   └── advanced_features.rs # Advanced features demonstration
+├── scripts/
+│   └── build.sh            # Build automation script
 ├── Cargo.toml              # Project dependencies and configuration
-└── README.md               # This file
+├── README.md               # This file
+└── FEATURE_ROADMAP.md      # Comprehensive feature development roadmap
 ```
 
 ## Prerequisites
