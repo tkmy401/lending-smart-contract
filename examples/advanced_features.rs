@@ -185,6 +185,18 @@ fn main() {
     println!("Current loan duration: {} blocks", loan_info.duration);
     println!("Loan extension feature coming in next phase...");
 
+    // Test partial repayment functionality
+    println!("\n--- Testing Partial Repayment ---");
+    let (total_paid, remaining_balance, payments) = contract.get_loan_payment_info(2).unwrap();
+    println!("Loan 2 payment info:");
+    println!("  Total paid: {}", total_paid);
+    println!("  Remaining balance: {}", remaining_balance);
+    println!("  Payment count: {}", payments.len());
+    
+    // Simulate partial payment (in real scenario, this would be a transaction)
+    println!("Partial payment would reduce remaining balance...");
+    println!("Partial repayment feature is now available!");
+
     // Try to repay loan that's not active
     println!("   Trying to repay non-active loan...");
     match contract.repay_loan(3) { // Loan 3 is still pending

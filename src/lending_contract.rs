@@ -1,7 +1,7 @@
 use ink::storage::Mapping;
 use ink_prelude::vec::Vec;
 
-use crate::types::{Loan, LoanStatus, UserProfile};
+use crate::types::{Loan, LoanStatus, UserProfile, PartialPayment, PaymentType};
 use crate::errors::LendingError;
 
 #[ink::contract]
@@ -54,6 +54,16 @@ pub mod lending_contract {
         discounted_amount: Balance,
         discount_applied: Balance,
         blocks_early: u64,
+    }
+
+    #[ink(event)]
+    pub struct LoanPartiallyPaid {
+        #[ink(topic)]
+        loan_id: u64,
+        borrower: AccountId,
+        payment_amount: Balance,
+        remaining_balance: Balance,
+        total_paid: Balance,
     }
 
     impl LendingContract {
@@ -120,6 +130,9 @@ pub mod lending_contract {
                 created_at: current_block,
                 due_date: current_block + duration,
                 early_repayment_discount: 200, // Default 2% discount for early repayment
+                total_paid: 0,
+                remaining_balance: 0, // Will be set when loan is funded
+                partial_payments: Vec::new(),
             };
 
             self.loans.insert(loan_id, &loan);
@@ -161,6 +174,11 @@ pub mod lending_contract {
 
             loan.lender = Some(caller);
             loan.status = LoanStatus::Active;
+            
+            // Set initial remaining balance (principal + interest)
+            let total_repayment = loan.amount + ((loan.amount * loan.interest_rate as u128) / 10000);
+            loan.remaining_balance = total_repayment;
+            
             self.loans.insert(loan_id, &loan);
 
             // Update lender profile
@@ -189,7 +207,7 @@ pub mod lending_contract {
                 return Err(LendingError::Unauthorized);
             }
             
-            if loan.status != LoanStatus::Active {
+            if loan.status != LoanStatus::Active && loan.status != LoanStatus::PartiallyPaid {
                 return Err(LendingError::LoanNotActive);
             }
 
@@ -199,17 +217,27 @@ pub mod lending_contract {
                 return Err(LendingError::InvalidAmount);
             }
 
+            // Record the full payment
+            let current_block = self.env().block_number() as u64;
+            let full_payment = PartialPayment {
+                amount: repayment_amount,
+                timestamp: current_block,
+                payment_type: PaymentType::Full,
+            };
+
+            // Update loan payment tracking
+            loan.total_paid = repayment_amount;
+            loan.remaining_balance = 0;
+            loan.partial_payments.push(full_payment);
+            loan.status = LoanStatus::Repaid;
+
+            self.loans.insert(loan_id, &loan);
+
             // Transfer repayment to lender
             if let Some(lender) = loan.lender {
-                let lender_repayment = loan.amount + 
-                    ((loan.amount * loan.interest_rate as u128) / 10000);
-                
-                self.env().transfer(lender, lender_repayment)
+                self.env().transfer(lender, repayment_amount)
                     .map_err(|_| LendingError::TransferFailed)?;
             }
-
-            loan.status = LoanStatus::Repaid;
-            self.loans.insert(loan_id, &loan);
 
             // Update borrower profile
             let mut borrower_profile = self.get_or_create_user_profile(caller);
@@ -265,14 +293,27 @@ pub mod lending_contract {
                 return Err(LendingError::InvalidAmount);
             }
 
+            // Record the early payment
+            let current_block = self.env().block_number() as u64;
+            let early_payment = PartialPayment {
+                amount: discounted_repayment,
+                timestamp: current_block,
+                payment_type: PaymentType::Early,
+            };
+
+            // Update loan payment tracking
+            loan.total_paid = discounted_repayment;
+            loan.remaining_balance = 0;
+            loan.partial_payments.push(early_payment);
+            loan.status = LoanStatus::EarlyRepaid;
+
+            self.loans.insert(loan_id, &loan);
+
             // Transfer discounted repayment to lender
             if let Some(lender) = loan.lender {
                 self.env().transfer(lender, discounted_repayment)
                     .map_err(|_| LendingError::TransferFailed)?;
             }
-
-            loan.status = LoanStatus::EarlyRepaid;
-            self.loans.insert(loan_id, &loan);
 
             // Update borrower profile
             let mut borrower_profile = self.get_or_create_user_profile(caller);
@@ -296,6 +337,84 @@ pub mod lending_contract {
                 discounted_amount: discounted_repayment,
                 discount_applied: discount_amount,
                 blocks_early,
+            });
+
+            Ok(())
+        }
+
+        #[ink(message)]
+        pub fn partial_repay_loan(&mut self, loan_id: u64) -> Result<(), LendingError> {
+            let caller = self.env().caller();
+            let mut loan = self.loans.get(loan_id).ok_or(LendingError::LoanNotFound)?;
+            
+            if loan.borrower != caller {
+                return Err(LendingError::Unauthorized);
+            }
+            
+            if loan.status != LoanStatus::Active && loan.status != LoanStatus::PartiallyPaid {
+                return Err(LendingError::LoanNotActive);
+            }
+
+            let payment_amount = self.env().transferred_value();
+            if payment_amount == 0 {
+                return Err(LendingError::InvalidAmount);
+            }
+
+            if payment_amount >= loan.remaining_balance {
+                return Err(LendingError::InvalidAmount); // Use full repayment for full amounts
+            }
+
+            // Record the partial payment
+            let current_block = self.env().block_number() as u64;
+            let partial_payment = PartialPayment {
+                amount: payment_amount,
+                timestamp: current_block,
+                payment_type: PaymentType::Partial,
+            };
+
+            // Update loan payment tracking
+            loan.total_paid += payment_amount;
+            loan.remaining_balance -= payment_amount;
+            loan.partial_payments.push(partial_payment);
+            
+            // Update loan status
+            if loan.remaining_balance > 0 {
+                loan.status = LoanStatus::PartiallyPaid;
+            } else {
+                loan.status = LoanStatus::Repaid;
+            }
+
+            self.loans.insert(loan_id, &loan);
+
+            // Transfer payment to lender
+            if let Some(lender) = loan.lender {
+                self.env().transfer(lender, payment_amount)
+                    .map_err(|_| LendingError::TransferFailed)?;
+            }
+
+            // Update borrower profile if loan is fully repaid
+            if loan.remaining_balance == 0 {
+                let mut borrower_profile = self.get_or_create_user_profile(caller);
+                borrower_profile.total_borrowed += loan.amount;
+                borrower_profile.active_loans.retain(|&id| id != loan_id);
+                self.user_profiles.insert(caller, &borrower_profile);
+
+                // Update lender profile
+                if let Some(lender) = loan.lender {
+                    let mut lender_profile = self.get_or_create_user_profile(lender);
+                    lender_profile.active_loans.retain(|&id| id != loan_id);
+                    self.user_profiles.insert(lender, &lender_profile);
+                }
+
+                self.total_liquidity -= loan.amount;
+            }
+
+            self.env().emit_event(LoanPartiallyPaid {
+                loan_id,
+                borrower: caller,
+                payment_amount,
+                remaining_balance: loan.remaining_balance,
+                total_paid: loan.total_paid,
             });
 
             Ok(())
@@ -332,6 +451,18 @@ pub mod lending_contract {
             
             let blocks_early = loan.due_date - current_block;
             Ok(self.calculate_early_repayment_discount(blocks_early, loan.duration))
+        }
+
+        #[ink(message)]
+        pub fn get_loan_payment_info(&self, loan_id: u64) -> Result<(Balance, Balance, Vec<PartialPayment>), LendingError> {
+            let loan = self.loans.get(loan_id).ok_or(LendingError::LoanNotFound)?;
+            Ok((loan.total_paid, loan.remaining_balance, loan.partial_payments.clone()))
+        }
+
+        #[ink(message)]
+        pub fn get_partial_payment_count(&self, loan_id: u64) -> Result<u32, LendingError> {
+            let loan = self.loans.get(loan_id).ok_or(LendingError::LoanNotFound)?;
+            Ok(loan.partial_payments.len() as u32)
         }
 
         // Private helper methods
