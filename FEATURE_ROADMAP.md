@@ -12,7 +12,7 @@
 ## 🆕 **Planned Features for Implementation**
 
 ### **Phase 1: Core Enhancements (High Priority)**
-- [ ] **Early repayment with discount** - Allow borrowers to repay early with 2-5% discount
+- [x] **Early repayment with discount** - Allow borrowers to repay early with 2-5% discount ✅
 - [ ] **Partial repayment** - Enable borrowers to pay off loans in installments
 - [ ] **Loan extension** - Allow borrowers to extend loan duration
 - [ ] **Late payment penalties** - Implement automatic late fees for overdue loans
@@ -107,11 +107,12 @@
 - Basic lending functionality
 - User profile management
 - Error handling system
+- Early repayment with discount ✅
 
 ### **Next Up**
-- Early repayment with discount
 - Partial repayment system
 - Loan extension functionality
+- Late payment penalties
 
 ## 📊 **Success Metrics**
 

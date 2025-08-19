@@ -45,6 +45,17 @@ pub mod lending_contract {
         amount: Balance,
     }
 
+    #[ink(event)]
+    pub struct LoanEarlyRepaid {
+        #[ink(topic)]
+        loan_id: u64,
+        borrower: AccountId,
+        original_amount: Balance,
+        discounted_amount: Balance,
+        discount_applied: Balance,
+        blocks_early: u64,
+    }
+
     impl LendingContract {
         #[ink(constructor)]
         pub fn new() -> Self {
@@ -108,6 +119,7 @@ pub mod lending_contract {
                 status: LoanStatus::Pending,
                 created_at: current_block,
                 due_date: current_block + duration,
+                early_repayment_discount: 200, // Default 2% discount for early repayment
             };
 
             self.loans.insert(loan_id, &loan);
@@ -224,6 +236,72 @@ pub mod lending_contract {
         }
 
         #[ink(message)]
+        pub fn early_repay_loan(&mut self, loan_id: u64) -> Result<(), LendingError> {
+            let caller = self.env().caller();
+            let mut loan = self.loans.get(loan_id).ok_or(LendingError::LoanNotFound)?;
+            
+            if loan.borrower != caller {
+                return Err(LendingError::Unauthorized);
+            }
+            
+            if loan.status != LoanStatus::Active {
+                return Err(LendingError::LoanNotActive);
+            }
+
+            let current_block = self.env().block_number() as u64;
+            if current_block >= loan.due_date {
+                return Err(LendingError::LoanNotActive); // Loan is already due, use regular repayment
+            }
+
+            // Calculate early repayment discount
+            let blocks_early = loan.due_date - current_block;
+            let discount_percentage = self.calculate_early_repayment_discount(blocks_early, loan.duration);
+            
+            let original_repayment = self.calculate_repayment_amount(loan_id)?;
+            let discount_amount = (original_repayment * discount_percentage as u128) / 10000;
+            let discounted_repayment = original_repayment - discount_amount;
+            
+            if self.env().transferred_value() != discounted_repayment {
+                return Err(LendingError::InvalidAmount);
+            }
+
+            // Transfer discounted repayment to lender
+            if let Some(lender) = loan.lender {
+                self.env().transfer(lender, discounted_repayment)
+                    .map_err(|_| LendingError::TransferFailed)?;
+            }
+
+            loan.status = LoanStatus::EarlyRepaid;
+            self.loans.insert(loan_id, &loan);
+
+            // Update borrower profile
+            let mut borrower_profile = self.get_or_create_user_profile(caller);
+            borrower_profile.total_borrowed += loan.amount;
+            borrower_profile.active_loans.retain(|&id| id != loan_id);
+            self.user_profiles.insert(caller, &borrower_profile);
+
+            // Update lender profile
+            if let Some(lender) = loan.lender {
+                let mut lender_profile = self.get_or_create_user_profile(lender);
+                lender_profile.active_loans.retain(|&id| id != loan_id);
+                self.user_profiles.insert(lender, &lender_profile);
+            }
+
+            self.total_liquidity -= loan.amount;
+
+            self.env().emit_event(LoanEarlyRepaid {
+                loan_id,
+                borrower: caller,
+                original_amount: original_repayment,
+                discounted_amount: discounted_repayment,
+                discount_applied: discount_amount,
+                blocks_early,
+            });
+
+            Ok(())
+        }
+
+        #[ink(message)]
         pub fn get_loan(&self, loan_id: u64) -> Option<Loan> {
             self.loans.get(loan_id)
         }
@@ -243,6 +321,19 @@ pub mod lending_contract {
             self.total_liquidity
         }
 
+        #[ink(message)]
+        pub fn get_early_repayment_discount(&self, loan_id: u64) -> Result<u16, LendingError> {
+            let loan = self.loans.get(loan_id).ok_or(LendingError::LoanNotFound)?;
+            let current_block = self.env().block_number() as u64;
+            
+            if current_block >= loan.due_date {
+                return Ok(0); // No discount if loan is already due
+            }
+            
+            let blocks_early = loan.due_date - current_block;
+            Ok(self.calculate_early_repayment_discount(blocks_early, loan.duration))
+        }
+
         // Private helper methods
         fn get_or_create_user_profile(&self, user: AccountId) -> UserProfile {
             self.user_profiles.get(user).unwrap_or(UserProfile {
@@ -258,6 +349,23 @@ pub mod lending_contract {
             let loan = self.loans.get(loan_id).ok_or(LendingError::LoanNotFound)?;
             let interest_amount = (loan.amount * loan.interest_rate as u128) / 10000;
             Ok(loan.amount + interest_amount)
+        }
+
+        fn calculate_early_repayment_discount(&self, blocks_early: u64, total_duration: u64) -> u16 {
+            // Calculate discount based on how early the repayment is
+            // More early = higher discount (up to 5%)
+            let early_percentage = (blocks_early * 10000) / total_duration;
+            
+            match early_percentage {
+                // Repaying in first 25% of loan duration: 5% discount
+                p if p >= 7500 => 500, // 5%
+                // Repaying in first 50% of loan duration: 3% discount  
+                p if p >= 5000 => 300, // 3%
+                // Repaying in first 75% of loan duration: 2% discount
+                p if p >= 2500 => 200, // 2%
+                // Repaying in last 25% of loan duration: 1% discount
+                _ => 100, // 1%
+            }
         }
     }
 } 

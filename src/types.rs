@@ -16,6 +16,7 @@ pub struct Loan {
     pub status: LoanStatus,
     pub created_at: u64,
     pub due_date: u64,
+    pub early_repayment_discount: u16, // Early repayment discount in basis points (default: 200 = 2%)
 }
 
 #[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
@@ -24,6 +25,7 @@ pub enum LoanStatus {
     Pending,
     Active,
     Repaid,
+    EarlyRepaid, // New status for early repayment
     Defaulted,
     Liquidated,
 }

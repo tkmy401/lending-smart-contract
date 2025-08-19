@@ -7,6 +7,7 @@ A professional and secure lending smart contract built with Rust using the ink! 
 - **Loan Creation**: Users can create loan requests with specified amounts, interest rates, and collateral
 - **Loan Funding**: Lenders can fund pending loans and earn interest
 - **Loan Repayment**: Borrowers can repay loans with interest
+- **Early Repayment with Discount**: Save 1-5% on interest by repaying early
 - **Collateral Management**: Secure collateral system with configurable ratios
 - **User Profiles**: Track user borrowing/lending history and credit scores
 - **Event System**: Comprehensive event logging for all operations
@@ -115,12 +116,18 @@ fund_loan(loan_id: u64) -> Result<(), LendingError>
 repay_loan(loan_id: u64) -> Result<(), LendingError>
 ```
 
+#### Early Repay Loan (with Discount)
+```rust
+early_repay_loan(loan_id: u64) -> Result<(), LendingError>
+```
+
 #### Query Functions
 ```rust
 get_loan(loan_id: u64) -> Option<Loan>
 get_user_profile(user: AccountId) -> Option<UserProfile>
 get_total_loans() -> u64
 get_total_liquidity() -> Balance
+get_early_repayment_discount(loan_id: u64) -> Result<u16, LendingError>
 ```
 
 ## Testing

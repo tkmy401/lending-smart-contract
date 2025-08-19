@@ -162,12 +162,28 @@ fn main() {
     // Repay Loan 1 (small loan)
     println!("   Repaying Loan 1...");
     test::set_caller::<DefaultEnvironment>(accounts.alice);
-    let repayment_amount_1 = 500 + ((500 * 300) / 10000); // Principal + Interest
-    test::set_value_transferred::<DefaultEnvironment>(repayment_amount_1);
+    let original_repayment = 500 + ((500 * 300) / 10000); // Principal + Interest
+    test::set_value_transferred::<DefaultEnvironment>(original_repayment);
     match contract.repay_loan(1) {
         Ok(()) => println!("   ✅ Loan 1 repaid successfully"),
         Err(e) => println!("   ❌ Failed to repay loan 1: {:?}", e),
     }
+
+    // Test early repayment discount calculation
+    println!("\n--- Testing Early Repayment Discount ---");
+    let discount = contract.get_early_repayment_discount(1).unwrap();
+    println!("Early repayment discount: {} basis points ({}%)", discount, discount as f64 / 100.0);
+    
+    // Simulate early repayment (in real scenario, this would be a transaction)
+    println!("Early repayment would cost: {} (original: {})", 
+        original_repayment - ((original_repayment * discount as u128) / 10000),
+        original_repayment);
+    
+    // Test loan extension (we'll implement this next)
+    println!("\n--- Testing Loan Extension ---");
+    let loan_info = contract.get_loan(1).unwrap();
+    println!("Current loan duration: {} blocks", loan_info.duration);
+    println!("Loan extension feature coming in next phase...");
 
     // Try to repay loan that's not active
     println!("   Trying to repay non-active loan...");
