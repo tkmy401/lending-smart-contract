@@ -213,6 +213,22 @@ fn main() {
     println!("Partial payment would reduce remaining balance...");
     println!("Partial repayment feature is now available!");
 
+    // Test late fee functionality
+    println!("\n--- Testing Late Fee System ---");
+    let (total_late_fees, late_fee_rate, max_late_fee_rate, overdue_since) = contract.get_late_fee_info(2).unwrap();
+    println!("Loan 2 late fee info:");
+    println!("  Total late fees: {}", total_late_fees);
+    println!("  Daily late fee rate: {} basis points ({}%)", late_fee_rate, late_fee_rate as f64 / 100.0);
+    println!("  Max late fee rate: {} basis points ({}%)", max_late_fee_rate, max_late_fee_rate as f64 / 100.0);
+    println!("  Overdue since: {:?}", overdue_since);
+    
+    let is_overdue = contract.is_loan_overdue(2).unwrap();
+    println!("  Is loan overdue: {}", is_overdue);
+    
+    let current_late_fees = contract.calculate_current_late_fees(2).unwrap();
+    println!("  Current late fees: {}", current_late_fees);
+    println!("  Late fee system is now active!");
+
     // Try to repay loan that's not active
     println!("   Trying to repay non-active loan...");
     match contract.repay_loan(3) { // Loan 3 is still pending

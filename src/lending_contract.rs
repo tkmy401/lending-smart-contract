@@ -78,6 +78,17 @@ pub mod lending_contract {
         total_extensions: u32,
     }
 
+    #[ink(event)]
+    pub struct LateFeesAccumulated {
+        #[ink(topic)]
+        loan_id: u64,
+        borrower: AccountId,
+        overdue_blocks: u64,
+        late_fees_added: Balance,
+        total_late_fees: Balance,
+        new_remaining_balance: Balance,
+    }
+
     impl LendingContract {
         #[ink(constructor)]
         pub fn new() -> Self {
@@ -148,6 +159,11 @@ pub mod lending_contract {
                 extension_count: 0,
                 max_extensions: 3, // Default maximum of 3 extensions
                 extension_fee_rate: 100, // Default 1% extension fee
+                late_fee_rate: 50, // Default 0.5% daily late fee
+                max_late_fee_rate: 1000, // Default 10% maximum late fee
+                total_late_fees: 0,
+                overdue_since: None,
+                grace_period: 100, // Default 100 blocks grace period (~10 minutes)
             };
 
             self.loans.insert(loan_id, &loan);
@@ -366,7 +382,7 @@ pub mod lending_contract {
                 return Err(LendingError::Unauthorized);
             }
             
-            if loan.status != LoanStatus::Active && loan.status != LoanStatus::PartiallyPaid {
+            if loan.status != LoanStatus::Active && loan.status != LoanStatus::PartiallyPaid && loan.status != LoanStatus::Overdue {
                 return Err(LendingError::LoanNotActive);
             }
 
@@ -377,6 +393,21 @@ pub mod lending_contract {
 
             if payment_amount >= loan.remaining_balance {
                 return Err(LendingError::InvalidAmount); // Use full repayment for full amounts
+            }
+
+            // Apply late fees if loan is overdue
+            if loan.status == LoanStatus::Overdue {
+                let current_block = self.env().block_number() as u64;
+                let grace_period_end = loan.due_date + loan.grace_period;
+                let overdue_blocks = current_block - grace_period_end;
+                let days_overdue = overdue_blocks / 14400;
+                let late_fee_rate = (loan.late_fee_rate * days_overdue as u16).min(loan.max_late_fee_rate);
+                let late_fees = (loan.remaining_balance * late_fee_rate as u128) / 10000;
+                
+                if late_fees > 0 {
+                    loan.total_late_fees += late_fees;
+                    loan.remaining_balance += late_fees;
+                }
             }
 
             // Record the partial payment
@@ -394,7 +425,11 @@ pub mod lending_contract {
             
             // Update loan status
             if loan.remaining_balance > 0 {
-                loan.status = LoanStatus::PartiallyPaid;
+                if loan.status == LoanStatus::Overdue {
+                    loan.status = LoanStatus::Overdue; // Keep overdue status
+                } else {
+                    loan.status = LoanStatus::PartiallyPaid;
+                }
             } else {
                 loan.status = LoanStatus::Repaid;
             }
@@ -501,6 +536,57 @@ pub mod lending_contract {
         }
 
         #[ink(message)]
+        pub fn apply_late_fees(&mut self, loan_id: u64) -> Result<(), LendingError> {
+            let mut loan = self.loans.get(loan_id).ok_or(LendingError::LoanNotFound)?;
+            
+            if loan.status != LoanStatus::Active && loan.status != LoanStatus::PartiallyPaid {
+                return Err(LendingError::LoanNotActive);
+            }
+
+            let current_block = self.env().block_number() as u64;
+            let grace_period_end = loan.due_date + loan.grace_period;
+            
+            // Check if loan is overdue and grace period has ended
+            if current_block <= grace_period_end {
+                return Err(LendingError::InvalidAmount); // Reuse error for not overdue yet
+            }
+
+            // Calculate overdue blocks
+            let overdue_blocks = current_block - grace_period_end;
+            
+            // Calculate late fees (daily compounding)
+            let days_overdue = overdue_blocks / 14400; // Assuming 14400 blocks per day (6s blocks)
+            let late_fee_rate = (loan.late_fee_rate * days_overdue as u16).min(loan.max_late_fee_rate);
+            
+            let late_fees = (loan.remaining_balance * late_fee_rate as u128) / 10000;
+            
+            if late_fees > 0 {
+                // Update loan with late fees
+                loan.total_late_fees += late_fees;
+                loan.remaining_balance += late_fees;
+                
+                // Set overdue status if not already set
+                if loan.status == LoanStatus::Active {
+                    loan.status = LoanStatus::Overdue;
+                    loan.overdue_since = Some(grace_period_end);
+                }
+                
+                self.loans.insert(loan_id, &loan);
+
+                self.env().emit_event(LateFeesAccumulated {
+                    loan_id,
+                    borrower: loan.borrower,
+                    overdue_blocks,
+                    late_fees_added: late_fees,
+                    total_late_fees: loan.total_late_fees,
+                    new_remaining_balance: loan.remaining_balance,
+                });
+            }
+
+            Ok(())
+        }
+
+        #[ink(message)]
         pub fn get_loan(&self, loan_id: u64) -> Option<Loan> {
             self.loans.get(loan_id)
         }
@@ -568,6 +654,38 @@ pub mod lending_contract {
             let loan = self.loans.get(loan_id).ok_or(LendingError::LoanNotFound)?;
             let extension_fee = (loan.remaining_balance * loan.extension_fee_rate as u128) / 10000;
             Ok(extension_fee)
+        }
+
+        #[ink(message)]
+        pub fn get_late_fee_info(&self, loan_id: u64) -> Result<(Balance, u16, u16, Option<u64>), LendingError> {
+            let loan = self.loans.get(loan_id).ok_or(LendingError::LoanNotFound)?;
+            Ok((loan.total_late_fees, loan.late_fee_rate, loan.max_late_fee_rate, loan.overdue_since))
+        }
+
+        #[ink(message)]
+        pub fn calculate_current_late_fees(&self, loan_id: u64) -> Result<Balance, LendingError> {
+            let loan = self.loans.get(loan_id).ok_or(LendingError::LoanNotFound)?;
+            let current_block = self.env().block_number() as u64;
+            let grace_period_end = loan.due_date + loan.grace_period;
+            
+            if current_block <= grace_period_end {
+                return Ok(0); // No late fees yet
+            }
+            
+            let overdue_blocks = current_block - grace_period_end;
+            let days_overdue = overdue_blocks / 14400;
+            let late_fee_rate = (loan.late_fee_rate * days_overdue as u16).min(loan.max_late_fee_rate);
+            let late_fees = (loan.remaining_balance * late_fee_rate as u128) / 10000;
+            
+            Ok(late_fees)
+        }
+
+        #[ink(message)]
+        pub fn is_loan_overdue(&self, loan_id: u64) -> Result<bool, LendingError> {
+            let loan = self.loans.get(loan_id).ok_or(LendingError::LoanNotFound)?;
+            let current_block = self.env().block_number() as u64;
+            let grace_period_end = loan.due_date + loan.grace_period;
+            Ok(current_block > grace_period_end)
         }
 
         // Private helper methods

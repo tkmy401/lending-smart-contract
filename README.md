@@ -10,6 +10,7 @@ A professional and secure lending smart contract built with Rust using the ink! 
 - **Early Repayment with Discount**: Save 1-5% on interest by repaying early
 - **Partial Repayment**: Pay off loans in multiple smaller installments
 - **Loan Extension**: Extend loan duration with configurable fees
+- **Late Payment Penalties**: Automatic late fees for overdue loans
 - **Collateral Management**: Secure collateral system with configurable ratios
 - **User Profiles**: Track user borrowing/lending history and credit scores
 - **Event System**: Comprehensive event logging for all operations
@@ -133,6 +134,11 @@ partial_repay_loan(loan_id: u64) -> Result<(), LendingError>
 extend_loan(loan_id: u64, extension_duration: u64) -> Result<(), LendingError>
 ```
 
+#### Apply Late Fees
+```rust
+apply_late_fees(loan_id: u64) -> Result<(), LendingError>
+```
+
 #### Query Functions
 ```rust
 get_loan(loan_id: u64) -> Option<Loan>
@@ -145,6 +151,9 @@ get_partial_payment_count(loan_id: u64) -> Result<u32, LendingError>
 get_loan_extension_info(loan_id: u64) -> Result<(u32, u32, u16), LendingError>
 can_extend_loan(loan_id: u64) -> Result<bool, LendingError>
 calculate_extension_fee(loan_id: u64) -> Result<Balance, LendingError>
+get_late_fee_info(loan_id: u64) -> Result<(Balance, u16, u16, Option<u64>), LendingError>
+calculate_current_late_fees(loan_id: u64) -> Result<Balance, LendingError>
+is_loan_overdue(loan_id: u64) -> Result<bool, LendingError>
 ```
 
 ## Testing

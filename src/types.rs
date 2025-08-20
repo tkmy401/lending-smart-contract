@@ -23,6 +23,11 @@ pub struct Loan {
     pub extension_count: u32, // Number of times loan has been extended
     pub max_extensions: u32, // Maximum allowed extensions (default: 3)
     pub extension_fee_rate: u16, // Extension fee in basis points (default: 100 = 1%)
+    pub late_fee_rate: u16, // Daily late fee rate in basis points (default: 50 = 0.5%)
+    pub max_late_fee_rate: u16, // Maximum late fee rate in basis points (default: 1000 = 10%)
+    pub total_late_fees: Balance, // Total late fees accumulated
+    pub overdue_since: Option<u64>, // Block number when loan became overdue
+    pub grace_period: u64, // Grace period in blocks before late fees start (default: 100 = ~10 minutes)
 }
 
 #[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
@@ -33,6 +38,7 @@ pub enum LoanStatus {
     PartiallyPaid, // New status for loans with partial payments
     Repaid,
     EarlyRepaid, // New status for early repayment
+    Overdue, // New status for overdue loans
     Defaulted,
     Liquidated,
 }
