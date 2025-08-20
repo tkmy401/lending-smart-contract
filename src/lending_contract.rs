@@ -66,6 +66,18 @@ pub mod lending_contract {
         total_paid: Balance,
     }
 
+    #[ink(event)]
+    pub struct LoanExtended {
+        #[ink(topic)]
+        loan_id: u64,
+        borrower: AccountId,
+        old_due_date: u64,
+        new_due_date: u64,
+        extension_duration: u64,
+        extension_fee: Balance,
+        total_extensions: u32,
+    }
+
     impl LendingContract {
         #[ink(constructor)]
         pub fn new() -> Self {
@@ -133,6 +145,9 @@ pub mod lending_contract {
                 total_paid: 0,
                 remaining_balance: 0, // Will be set when loan is funded
                 partial_payments: Vec::new(),
+                extension_count: 0,
+                max_extensions: 3, // Default maximum of 3 extensions
+                extension_fee_rate: 100, // Default 1% extension fee
             };
 
             self.loans.insert(loan_id, &loan);
@@ -421,6 +436,71 @@ pub mod lending_contract {
         }
 
         #[ink(message)]
+        pub fn extend_loan(&mut self, loan_id: u64, extension_duration: u64) -> Result<(), LendingError> {
+            let caller = self.env().caller();
+            let mut loan = self.loans.get(loan_id).ok_or(LendingError::LoanNotFound)?;
+            
+            if loan.borrower != caller {
+                return Err(LendingError::Unauthorized);
+            }
+            
+            if loan.status != LoanStatus::Active && loan.status != LoanStatus::PartiallyPaid {
+                return Err(LendingError::LoanNotActive);
+            }
+
+            // Check if loan can still be extended
+            if loan.extension_count >= loan.max_extensions {
+                return Err(LendingError::InvalidAmount); // Reuse error for max extensions reached
+            }
+
+            // Validate extension duration
+            if extension_duration == 0 || extension_duration > 100000 { // Max ~1 year extension
+                return Err(LendingError::InvalidDuration);
+            }
+
+            let current_block = self.env().block_number() as u64;
+            if current_block >= loan.due_date {
+                return Err(LendingError::LoanNotActive); // Loan is already due
+            }
+
+            // Calculate extension fee
+            let extension_fee = (loan.remaining_balance * loan.extension_fee_rate as u128) / 10000;
+            
+            // Check if extension fee is paid
+            if self.env().transferred_value() != extension_fee {
+                return Err(LendingError::InvalidAmount);
+            }
+
+            // Update loan extension details
+            let old_due_date = loan.due_date;
+            loan.due_date += extension_duration;
+            loan.extension_count += 1;
+
+            // Update remaining balance to include extension fee
+            loan.remaining_balance += extension_fee;
+
+            self.loans.insert(loan_id, &loan);
+
+            // Transfer extension fee to lender
+            if let Some(lender) = loan.lender {
+                self.env().transfer(lender, extension_fee)
+                    .map_err(|_| LendingError::TransferFailed)?;
+            }
+
+            self.env().emit_event(LoanExtended {
+                loan_id,
+                borrower: caller,
+                old_due_date,
+                new_due_date: loan.due_date,
+                extension_duration,
+                extension_fee,
+                total_extensions: loan.extension_count,
+            });
+
+            Ok(())
+        }
+
+        #[ink(message)]
         pub fn get_loan(&self, loan_id: u64) -> Option<Loan> {
             self.loans.get(loan_id)
         }
@@ -463,6 +543,31 @@ pub mod lending_contract {
         pub fn get_partial_payment_count(&self, loan_id: u64) -> Result<u32, LendingError> {
             let loan = self.loans.get(loan_id).ok_or(LendingError::LoanNotFound)?;
             Ok(loan.partial_payments.len() as u32)
+        }
+
+        #[ink(message)]
+        pub fn get_loan_extension_info(&self, loan_id: u64) -> Result<(u32, u32, u16), LendingError> {
+            let loan = self.loans.get(loan_id).ok_or(LendingError::LoanNotFound)?;
+            Ok((loan.extension_count, loan.max_extensions, loan.extension_fee_rate))
+        }
+
+        #[ink(message)]
+        pub fn can_extend_loan(&self, loan_id: u64) -> Result<bool, LendingError> {
+            let loan = self.loans.get(loan_id).ok_or(LendingError::LoanNotFound)?;
+            let current_block = self.env().block_number() as u64;
+            
+            let can_extend = loan.extension_count < loan.max_extensions && 
+                           current_block < loan.due_date &&
+                           (loan.status == LoanStatus::Active || loan.status == LoanStatus::PartiallyPaid);
+            
+            Ok(can_extend)
+        }
+
+        #[ink(message)]
+        pub fn calculate_extension_fee(&self, loan_id: u64) -> Result<Balance, LendingError> {
+            let loan = self.loans.get(loan_id).ok_or(LendingError::LoanNotFound)?;
+            let extension_fee = (loan.remaining_balance * loan.extension_fee_rate as u128) / 10000;
+            Ok(extension_fee)
         }
 
         // Private helper methods

@@ -14,7 +14,7 @@
 ### **Phase 1: Core Enhancements (High Priority)**
 - [x] **Early repayment with discount** - Allow borrowers to repay early with 2-5% discount ✅
 - [x] **Partial repayment** - Enable borrowers to pay off loans in installments ✅
-- [ ] **Loan extension** - Allow borrowers to extend loan duration
+- [x] **Loan extension** - Allow borrowers to extend loan duration ✅
 - [ ] **Late payment penalties** - Implement automatic late fees for overdue loans
 - [ ] **Loan refinancing** - Allow borrowers to refinance with better terms
 
@@ -109,11 +109,12 @@
 - Error handling system
 - Early repayment with discount ✅
 - Partial repayment system ✅
+- Loan extension functionality ✅
 
 ### **Next Up**
-- Loan extension functionality
 - Late payment penalties
 - Loan refinancing
+- Risk-based pricing
 
 ## 📊 **Success Metrics**
 

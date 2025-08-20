@@ -20,6 +20,9 @@ pub struct Loan {
     pub total_paid: Balance, // Total amount paid so far (principal + interest)
     pub remaining_balance: Balance, // Remaining balance to be paid
     pub partial_payments: Vec<PartialPayment>, // History of partial payments
+    pub extension_count: u32, // Number of times loan has been extended
+    pub max_extensions: u32, // Maximum allowed extensions (default: 3)
+    pub extension_fee_rate: u16, // Extension fee in basis points (default: 100 = 1%)
 }
 
 #[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]

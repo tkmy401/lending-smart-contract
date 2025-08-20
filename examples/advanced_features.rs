@@ -185,6 +185,22 @@ fn main() {
     println!("Current loan duration: {} blocks", loan_info.duration);
     println!("Loan extension feature coming in next phase...");
 
+    // Test loan extension functionality
+    println!("\n--- Testing Loan Extension ---");
+    let (extension_count, max_extensions, fee_rate) = contract.get_loan_extension_info(2).unwrap();
+    println!("Loan 2 extension info:");
+    println!("  Extensions used: {}/{}", extension_count, max_extensions);
+    println!("  Extension fee rate: {} basis points ({}%)", fee_rate, fee_rate as f64 / 100.0);
+    
+    let can_extend = contract.can_extend_loan(2).unwrap();
+    println!("  Can extend loan: {}", can_extend);
+    
+    if can_extend {
+        let extension_fee = contract.calculate_extension_fee(2).unwrap();
+        println!("  Extension fee: {}", extension_fee);
+        println!("  Loan extension feature is now available!");
+    }
+
     // Test partial repayment functionality
     println!("\n--- Testing Partial Repayment ---");
     let (total_paid, remaining_balance, payments) = contract.get_loan_payment_info(2).unwrap();
