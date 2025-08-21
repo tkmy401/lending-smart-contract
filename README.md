@@ -12,6 +12,7 @@ A professional and secure lending smart contract built with Rust using the ink! 
 - **Loan Extension**: Extend loan duration with configurable fees
 - **Late Payment Penalties**: Automatic late fees for overdue loans
 - **Loan Refinancing**: Refinance loans with better terms and lower rates
+- **Variable Interest Rates**: Dynamic rates with risk-based pricing
 - **Collateral Management**: Secure collateral system with configurable ratios
 - **User Profiles**: Track user borrowing/lending history and credit scores
 - **Event System**: Comprehensive event logging for all operations
@@ -143,6 +144,13 @@ apply_late_fees(loan_id: u64) -> Result<(), LendingError>
 #### Refinance Loan
 ```rust
 refinance_loan(loan_id: u64, new_interest_rate: u16, new_duration: u64) -> Result<(), LendingError>
+```
+
+#### Variable Interest Rate Management
+```rust
+adjust_interest_rate(loan_id: u64, new_base_rate: u16, reason: RateAdjustmentReason) -> Result<(), LendingError>
+update_risk_multiplier(loan_id: u64, new_risk_multiplier: u16) -> Result<(), LendingError>
+convert_to_variable_rate(loan_id: u64, new_base_rate: u16) -> Result<(), LendingError>
 ```
 
 #### Query Functions

@@ -33,6 +33,12 @@ pub struct Loan {
     pub refinance_fee_rate: u16, // Refinance fee in basis points (default: 200 = 2%)
     pub original_loan_id: Option<u64>, // ID of the original loan if this is a refinanced loan
     pub refinance_history: Vec<RefinanceRecord>, // History of refinancing operations
+    pub interest_rate_type: InterestRateType, // Fixed or variable interest rate
+    pub base_interest_rate: u16, // Base interest rate for variable loans
+    pub risk_multiplier: u16, // Risk-based multiplier (1000 = 1.0x, 1200 = 1.2x)
+    pub interest_rate_adjustments: Vec<InterestRateAdjustment>, // History of rate changes
+    pub last_interest_update: u64, // Block number of last interest rate update
+    pub interest_update_frequency: u64, // How often interest rates can be updated (blocks)
 }
 
 #[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
@@ -77,6 +83,33 @@ pub struct RefinanceRecord {
     pub new_interest_rate: u16, // New interest rate
     pub refinance_fee: Balance, // Fee paid for refinancing
     pub remaining_balance: Balance, // Remaining balance at time of refinancing
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub enum InterestRateType {
+    Fixed,      // Fixed interest rate throughout loan term
+    Variable,   // Variable interest rate that can change
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub struct InterestRateAdjustment {
+    pub timestamp: u64, // Block number when adjustment occurred
+    pub old_rate: u16,  // Previous interest rate
+    pub new_rate: u16,  // New interest rate
+    pub reason: RateAdjustmentReason, // Reason for the adjustment
+    pub risk_score_change: Option<i16>, // Change in risk score if applicable
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub enum RateAdjustmentReason {
+    MarketConditions,    // General market conditions
+    RiskScoreChange,     // Borrower risk score changed
+    CreditRatingUpdate,  // Credit rating updated
+    MarketVolatility,    // High market volatility
+    ManualAdjustment,    // Manual adjustment by lender
 }
 
 #[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]

@@ -19,10 +19,10 @@
 - [x] **Loan refinancing** - Allow borrowers to refinance with better terms ✅
 
 ### **Phase 2: Advanced Financial Features (Medium Priority)**
-- [ ] **Variable interest rates** - Dynamic rates based on market conditions
+- [x] **Variable interest rates** - Dynamic rates based on market conditions ✅
 - [ ] **Compound interest calculation** - More sophisticated interest computation
 - [ ] **Interest-only payment periods** - Flexible payment structures
-- [ ] **Risk-based pricing** - Interest rates based on borrower risk score
+- [x] **Risk-based pricing** - Interest rates based on borrower risk score ✅
 - [ ] **Grace period management** - Configurable grace periods for payments
 
 ### **Phase 3: Liquidity & Pool Management (Medium Priority)**
@@ -112,11 +112,13 @@
 - Loan extension functionality ✅
 - Late payment penalties ✅
 - Loan refinancing ✅
+- Variable interest rates ✅
+- Risk-based pricing ✅
 
 ### **Next Up**
-- Risk-based pricing
-- Variable interest rates
 - Compound interest calculation
+- Interest-only payment periods
+- Grace period management
 
 ## 📊 **Success Metrics**
 
