@@ -1,7 +1,10 @@
 use ink::storage::Mapping;
 use ink_prelude::vec::Vec;
 
-use crate::types::{Loan, LoanStatus, UserProfile, PartialPayment, PaymentType, RefinanceRecord};
+use crate::types::{
+    Loan, LoanStatus, UserProfile, PartialPayment, PaymentType, RefinanceRecord,
+    InterestRateType, InterestRateAdjustment, RateAdjustmentReason
+};
 use crate::errors::LendingError;
 
 // ============================================================================
@@ -130,6 +133,18 @@ pub mod lending_contract {
         refinance_count: u32,
     }
 
+    #[ink(event)]
+    pub struct InterestRateAdjusted {
+        #[ink(topic)]
+        loan_id: u64,
+        borrower: AccountId,
+        old_rate: u16,
+        new_rate: u16,
+        reason: RateAdjustmentReason,
+        risk_multiplier: u16,
+        effective_rate: u16,
+    }
+
     impl LendingContract {
         // ============================================================================
         // CONSTRUCTOR
@@ -219,6 +234,12 @@ pub mod lending_contract {
                 refinance_fee_rate: 200, // Default 2% refinance fee
                 original_loan_id: None,
                 refinance_history: Vec::new(),
+                interest_rate_type: InterestRateType::Fixed, // Default to fixed rate
+                base_interest_rate: interest_rate, // Base rate same as initial rate
+                risk_multiplier: 1000, // Default 1.0x risk multiplier
+                interest_rate_adjustments: Vec::new(),
+                last_interest_update: current_block,
+                interest_update_frequency: 14400, // Default: daily updates (14400 blocks)
             };
 
             self.loans.insert(loan_id, &loan);
@@ -745,6 +766,218 @@ pub mod lending_contract {
                 refinance_fee,
                 remaining_balance: loan.remaining_balance,
                 refinance_count: loan.refinance_count,
+            });
+
+            Ok(())
+        }
+
+        // ============================================================================
+        // VARIABLE INTEREST RATE MANAGEMENT
+        // ============================================================================
+        
+        /// Adjust interest rate for a variable rate loan
+        #[ink(message)]
+        pub fn adjust_interest_rate(
+            &mut self,
+            loan_id: u64,
+            new_base_rate: u16,
+            reason: RateAdjustmentReason,
+        ) -> Result<(), LendingError> {
+            let caller = self.env().caller();
+            let mut loan = self.loans.get(loan_id).ok_or(LendingError::LoanNotFound)?;
+            
+            // Only lender can adjust interest rates
+            if loan.lender != Some(caller) {
+                return Err(LendingError::Unauthorized);
+            }
+            
+            // Check if loan supports variable rates
+            if loan.interest_rate_type != InterestRateType::Variable {
+                return Err(LendingError::InvalidAmount); // Reuse error for fixed rate loan
+            }
+
+            // Validate new rate
+            if new_base_rate == 0 || new_base_rate > 10000 {
+                return Err(LendingError::InvalidInterestRate);
+            }
+
+            let current_block = self.env().block_number() as u64;
+            
+            // Check update frequency
+            if current_block < loan.last_interest_update + loan.interest_update_frequency {
+                return Err(LendingError::InvalidAmount); // Reuse error for too frequent updates
+            }
+
+            let old_rate = loan.interest_rate;
+            let _old_base_rate = loan.base_interest_rate;
+            
+            // Calculate new effective rate with risk multiplier
+            let new_effective_rate = (new_base_rate * loan.risk_multiplier) / 1000;
+            
+            // Record the adjustment
+            let adjustment = InterestRateAdjustment {
+                timestamp: current_block,
+                old_rate: old_rate,
+                new_rate: new_effective_rate,
+                reason: reason.clone(),
+                risk_score_change: None, // Will be updated if risk score changes
+            };
+
+            // Update loan with new rates
+            loan.base_interest_rate = new_base_rate;
+            loan.interest_rate = new_effective_rate;
+            loan.interest_rate_adjustments.push(adjustment);
+            loan.last_interest_update = current_block;
+
+            // Recalculate remaining balance with new interest rate
+            if loan.status == LoanStatus::Active || loan.status == LoanStatus::PartiallyPaid {
+                let new_total_repayment = loan.amount + ((loan.amount * new_effective_rate as u128) / 10000);
+                let principal_paid = loan.amount - (loan.remaining_balance - loan.total_late_fees);
+                let new_remaining_balance = new_total_repayment - principal_paid;
+                loan.remaining_balance = new_remaining_balance;
+            }
+
+            self.loans.insert(loan_id, &loan);
+
+            self.env().emit_event(InterestRateAdjusted {
+                loan_id,
+                borrower: loan.borrower,
+                old_rate,
+                new_rate: new_effective_rate,
+                reason,
+                risk_multiplier: loan.risk_multiplier,
+                effective_rate: new_effective_rate,
+            });
+
+            Ok(())
+        }
+
+        /// Update risk multiplier for a loan
+        #[ink(message)]
+        pub fn update_risk_multiplier(
+            &mut self,
+            loan_id: u64,
+            new_risk_multiplier: u16,
+        ) -> Result<(), LendingError> {
+            let caller = self.env().caller();
+            let mut loan = self.loans.get(loan_id).ok_or(LendingError::LoanNotFound)?;
+            
+            // Only lender can update risk multipliers
+            if loan.lender != Some(caller) {
+                return Err(LendingError::Unauthorized);
+            }
+            
+            // Validate risk multiplier (0.5x to 3.0x)
+            if new_risk_multiplier < 500 || new_risk_multiplier > 3000 {
+                return Err(LendingError::InvalidAmount); // Reuse error for invalid multiplier
+            }
+
+            let old_multiplier = loan.risk_multiplier;
+            let old_rate = loan.interest_rate;
+            
+            // Calculate new effective rate
+            let new_effective_rate = (loan.base_interest_rate * new_risk_multiplier) / 1000;
+            
+            // Record the adjustment
+            let adjustment = InterestRateAdjustment {
+                timestamp: self.env().block_number() as u64,
+                old_rate: old_rate,
+                new_rate: new_effective_rate,
+                reason: RateAdjustmentReason::RiskScoreChange,
+                risk_score_change: Some((new_risk_multiplier as i16) - (old_multiplier as i16)),
+            };
+
+            // Update loan
+            loan.risk_multiplier = new_risk_multiplier;
+            loan.interest_rate = new_effective_rate;
+            loan.interest_rate_adjustments.push(adjustment);
+            loan.last_interest_update = self.env().block_number() as u64;
+
+            // Recalculate remaining balance if loan is active
+            if loan.status == LoanStatus::Active || loan.status == LoanStatus::PartiallyPaid {
+                let new_total_repayment = loan.amount + ((loan.amount * new_effective_rate as u128) / 10000);
+                let principal_paid = loan.amount - (loan.remaining_balance - loan.total_late_fees);
+                let new_remaining_balance = new_total_repayment - principal_paid;
+                loan.remaining_balance = new_remaining_balance;
+            }
+
+            self.loans.insert(loan_id, &loan);
+
+            self.env().emit_event(InterestRateAdjusted {
+                loan_id,
+                borrower: loan.borrower,
+                old_rate,
+                new_rate: new_effective_rate,
+                reason: RateAdjustmentReason::RiskScoreChange,
+                risk_multiplier: new_risk_multiplier,
+                effective_rate: new_effective_rate,
+            });
+
+            Ok(())
+        }
+
+        /// Convert a fixed rate loan to variable rate
+        #[ink(message)]
+        pub fn convert_to_variable_rate(
+            &mut self,
+            loan_id: u64,
+            new_base_rate: u16,
+        ) -> Result<(), LendingError> {
+            let caller = self.env().caller();
+            let mut loan = self.loans.get(loan_id).ok_or(LendingError::LoanNotFound)?;
+            
+            // Only lender can convert loan types
+            if loan.lender != Some(caller) {
+                return Err(LendingError::Unauthorized);
+            }
+            
+            // Check if loan is already variable
+            if loan.interest_rate_type == InterestRateType::Variable {
+                return Err(LendingError::InvalidAmount); // Reuse error for already variable
+            }
+
+            // Validate new base rate
+            if new_base_rate == 0 || new_base_rate > 10000 {
+                return Err(LendingError::InvalidInterestRate);
+            }
+
+            let old_rate = loan.interest_rate;
+            let new_effective_rate = (new_base_rate * loan.risk_multiplier) / 1000;
+            
+            // Record the conversion
+            let adjustment = InterestRateAdjustment {
+                timestamp: self.env().block_number() as u64,
+                old_rate: old_rate,
+                new_rate: new_effective_rate,
+                reason: RateAdjustmentReason::ManualAdjustment,
+                risk_score_change: None,
+            };
+
+            // Update loan
+            loan.interest_rate_type = InterestRateType::Variable;
+            loan.base_interest_rate = new_base_rate;
+            loan.interest_rate = new_effective_rate;
+            loan.interest_rate_adjustments.push(adjustment);
+            loan.last_interest_update = self.env().block_number() as u64;
+
+            // Recalculate remaining balance
+            if loan.status == LoanStatus::Active || loan.status == LoanStatus::PartiallyPaid {
+                let new_total_repayment = loan.amount + ((loan.amount * new_effective_rate as u128) / 10000);
+                let principal_paid = loan.amount - (loan.remaining_balance - loan.total_late_fees);
+                let new_remaining_balance = new_total_repayment - principal_paid;
+                loan.remaining_balance = new_remaining_balance;
+            }
+
+            self.loans.insert(loan_id, &loan);
+
+            self.env().emit_event(InterestRateAdjusted {
+                loan_id,
+                borrower: loan.borrower,
+                old_rate,
+                new_rate: new_effective_rate,
+                reason: RateAdjustmentReason::ManualAdjustment,
+                risk_multiplier: loan.risk_multiplier,
+                effective_rate: new_effective_rate,
             });
 
             Ok(())
