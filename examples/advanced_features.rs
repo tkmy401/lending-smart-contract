@@ -229,6 +229,25 @@ fn main() {
     println!("  Current late fees: {}", current_late_fees);
     println!("  Late fee system is now active!");
 
+    // Test loan refinancing functionality
+    println!("\n--- Testing Loan Refinancing ---");
+    let (refinance_count, max_refinances, refinance_fee_rate) = contract.get_loan_refinance_info(2).unwrap();
+    println!("Loan 2 refinance info:");
+    println!("  Refinances used: {}/{}", refinance_count, max_refinances);
+    println!("  Refinance fee rate: {} basis points ({}%)", refinance_fee_rate, refinance_fee_rate as f64 / 100.0);
+    
+    let can_refinance = contract.can_refinance_loan(2).unwrap();
+    println!("  Can refinance loan: {}", can_refinance);
+    
+    if can_refinance {
+        let refinance_fee = contract.calculate_refinance_fee(2).unwrap();
+        println!("  Refinance fee: {}", refinance_fee);
+        println!("  Loan refinancing feature is now available!");
+    }
+    
+    let refinance_history = contract.get_refinance_history(2).unwrap();
+    println!("  Refinance history: {} records", refinance_history.len());
+
     // Try to repay loan that's not active
     println!("   Trying to repay non-active loan...");
     match contract.repay_loan(3) { // Loan 3 is still pending
