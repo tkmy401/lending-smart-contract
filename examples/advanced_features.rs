@@ -6,7 +6,7 @@ use ink::env::{
     test,
 };
 
-use lending_smart_contract::{LendingContract, errors::LendingError};
+use lending_smart_contract::{LendingContract, types::RateAdjustmentReason, errors::LendingError};
 
 /// Example demonstrating advanced features of the lending smart contract
 fn main() {
@@ -247,6 +247,118 @@ fn main() {
     
     let refinance_history = contract.get_refinance_history(2).unwrap();
     println!("  Refinance history: {} records", refinance_history.len());
+
+    // ============================================================================
+    // VARIABLE INTEREST RATE FEATURES DEMONSTRATION
+    // ============================================================================
+    println!("\n--- Testing Variable Interest Rate Features ---");
+    
+    // Test 1: Convert fixed rate loan to variable rate
+    println!("\n1. Converting Loan 2 to Variable Rate...");
+    // Note: In this example, Bob created loan 2, so he's the borrower, not the lender
+    // Eve funded loan 2, so she's the lender. Let's set the caller to Eve.
+    test::set_caller::<DefaultEnvironment>(accounts.eve); // Lender can convert
+    
+    // Check current loan state
+    let loan_info = contract.get_loan(2).unwrap();
+    println!("   Current interest rate type: {:?}", loan_info.interest_rate_type);
+    println!("   Current interest rate: {} basis points ({}%)", loan_info.interest_rate, loan_info.interest_rate as f64 / 100.0);
+    println!("   Current risk multiplier: {} ({}x)", loan_info.risk_multiplier, loan_info.risk_multiplier as f64 / 1000.0);
+    
+    // Convert to variable rate
+    match contract.convert_to_variable_rate(2, 600) {
+        Ok(_) => {
+            println!("   ✅ Successfully converted to variable rate!");
+            let updated_loan = contract.get_loan(2).unwrap();
+            println!("   New base rate: {} basis points ({}%)", updated_loan.base_interest_rate, updated_loan.base_interest_rate as f64 / 100.0);
+            println!("   New effective rate: {} basis points ({}%)", updated_loan.interest_rate, updated_loan.interest_rate as f64 / 100.0);
+            println!("   Interest rate type: {:?}", updated_loan.interest_rate_type);
+        }
+        Err(e) => println!("   ❌ Failed to convert to variable rate: {:?}", e),
+    }
+    
+    // Test 2: Adjust interest rate based on market conditions
+    println!("\n2. Adjusting Interest Rate for Market Conditions...");
+    
+    match contract.adjust_interest_rate(2, 700, RateAdjustmentReason::MarketConditions) {
+        Ok(_) => {
+            println!("   ✅ Successfully adjusted interest rate!");
+            let updated_loan = contract.get_loan(2).unwrap();
+            println!("   New base rate: {} basis points ({}%)", updated_loan.base_interest_rate, updated_loan.base_interest_rate as f64 / 100.0);
+            println!("   New effective rate: {} basis points ({}%)", updated_loan.interest_rate, updated_loan.interest_rate as f64 / 100.0);
+            println!("   Rate adjustments recorded: {}", updated_loan.interest_rate_adjustments.len());
+        }
+        Err(e) => println!("   ❌ Failed to adjust interest rate: {:?}", e),
+    }
+    
+    // Test 3: Update risk multiplier for borrower risk assessment
+    println!("\n3. Updating Risk Multiplier...");
+    
+    match contract.update_risk_multiplier(2, 1200) { // 1.2x risk multiplier
+        Ok(_) => {
+            println!("   ✅ Successfully updated risk multiplier!");
+            let updated_loan = contract.get_loan(2).unwrap();
+            println!("   New risk multiplier: {} ({}x)", updated_loan.risk_multiplier, updated_loan.risk_multiplier as f64 / 1000.0);
+            println!("   New effective rate: {} basis points ({}%)", updated_loan.interest_rate, updated_loan.interest_rate as f64 / 100.0);
+            println!("   Rate adjustments recorded: {}", updated_loan.interest_rate_adjustments.len());
+        }
+        Err(e) => println!("   ❌ Failed to update risk multiplier: {:?}", e),
+    }
+    
+    // Test 4: Demonstrate rate adjustment history
+    println!("\n4. Rate Adjustment History...");
+    let loan_info = contract.get_loan(2).unwrap();
+    println!("   Total rate adjustments: {}", loan_info.interest_rate_adjustments.len());
+    
+    for (i, adjustment) in loan_info.interest_rate_adjustments.iter().enumerate() {
+        println!("   Adjustment {}: {} → {} basis points", i + 1, adjustment.old_rate, adjustment.new_rate);
+        println!("     Reason: {:?}", adjustment.reason);
+        println!("     Timestamp: block {}", adjustment.timestamp);
+        if let Some(risk_change) = adjustment.risk_score_change {
+            println!("     Risk score change: {}", risk_change);
+        }
+    }
+    
+    // Test 5: Demonstrate different rate adjustment reasons
+    println!("\n5. Testing Different Rate Adjustment Reasons...");
+    
+    // Try to adjust rate again (should fail due to frequency limit)
+    match contract.adjust_interest_rate(2, 800, RateAdjustmentReason::RiskScoreChange) {
+        Ok(_) => println!("   ✅ Successfully adjusted rate for risk score change"),
+        Err(e) => println!("   ❌ Expected failure due to frequency limit: {:?}", e),
+    }
+    
+    // Test 6: Show current loan state with variable rates
+    println!("\n6. Current Loan State with Variable Rates...");
+    let final_loan = contract.get_loan(2).unwrap();
+    println!("   Interest rate type: {:?}", final_loan.interest_rate_type);
+    println!("   Base interest rate: {} basis points ({}%)", final_loan.base_interest_rate, final_loan.base_interest_rate as f64 / 100.0);
+    println!("   Risk multiplier: {} ({}x)", final_loan.risk_multiplier, final_loan.risk_multiplier as f64 / 1000.0);
+    println!("   Effective interest rate: {} basis points ({}%)", final_loan.interest_rate, final_loan.interest_rate as f64 / 100.0);
+    println!("   Last rate update: block {}", final_loan.last_interest_update);
+    println!("   Update frequency: {} blocks ({} days)", final_loan.interest_update_frequency, final_loan.interest_update_frequency / 14400);
+    
+    // Test 7: Demonstrate rate calculation formula
+    println!("\n7. Rate Calculation Formula Demonstration...");
+    let base_rate = final_loan.base_interest_rate as u32;
+    let risk_mult = final_loan.risk_multiplier as u32;
+    let calculated_rate = (base_rate * risk_mult) / 1000;
+    println!("   Formula: (Base Rate × Risk Multiplier) ÷ 1000");
+    println!("   Calculation: ({} × {}) ÷ 1000 = {} ÷ 1000 = {}", base_rate, risk_mult, base_rate * risk_mult, calculated_rate);
+    println!("   Actual rate: {} (matches calculation: {})", final_loan.interest_rate, calculated_rate == final_loan.interest_rate as u32);
+    
+    println!("\n🎉 Variable Interest Rate Features demonstration completed!");
+    println!("This demonstrates:");
+    println!("  - Fixed to variable rate conversion");
+    println!("  - Dynamic interest rate adjustments");
+    println!("  - Risk-based pricing with multipliers");
+    println!("  - Rate adjustment history tracking");
+    println!("  - Update frequency controls");
+    println!("  - Market-responsive lending");
+
+    // ============================================================================
+    // COMPREHENSIVE LOAN QUERIES AND ANALYSIS
+    // ============================================================================
 
     // Try to repay loan that's not active
     println!("   Trying to repay non-active loan...");

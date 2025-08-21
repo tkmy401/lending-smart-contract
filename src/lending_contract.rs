@@ -744,9 +744,8 @@ pub mod lending_contract {
 
             // Recalculate remaining balance with new interest rate
             let new_total_repayment = loan.amount + ((loan.amount * new_interest_rate as u128) / 10000);
-            let principal_paid = loan.amount - (loan.remaining_balance - loan.total_late_fees);
-            let new_remaining_balance = new_total_repayment - principal_paid;
-            loan.remaining_balance = new_remaining_balance;
+            // For refinancing, just set the new remaining balance
+            loan.remaining_balance = new_total_repayment;
 
             self.loans.insert(loan_id, &loan);
 
@@ -812,7 +811,7 @@ pub mod lending_contract {
             let _old_base_rate = loan.base_interest_rate;
             
             // Calculate new effective rate with risk multiplier
-            let new_effective_rate = (new_base_rate * loan.risk_multiplier) / 1000;
+            let new_effective_rate = ((new_base_rate as u32 * loan.risk_multiplier as u32) / 1000) as u16;
             
             // Record the adjustment
             let adjustment = InterestRateAdjustment {
@@ -876,7 +875,7 @@ pub mod lending_contract {
             let old_rate = loan.interest_rate;
             
             // Calculate new effective rate
-            let new_effective_rate = (loan.base_interest_rate * new_risk_multiplier) / 1000;
+            let new_effective_rate = ((loan.base_interest_rate as u32 * new_risk_multiplier as u32) / 1000) as u16;
             
             // Record the adjustment
             let adjustment = InterestRateAdjustment {
@@ -896,9 +895,8 @@ pub mod lending_contract {
             // Recalculate remaining balance if loan is active
             if loan.status == LoanStatus::Active || loan.status == LoanStatus::PartiallyPaid {
                 let new_total_repayment = loan.amount + ((loan.amount * new_effective_rate as u128) / 10000);
-                let principal_paid = loan.amount - (loan.remaining_balance - loan.total_late_fees);
-                let new_remaining_balance = new_total_repayment - principal_paid;
-                loan.remaining_balance = new_remaining_balance;
+                // For risk multiplier updates, just set the new remaining balance
+                loan.remaining_balance = new_total_repayment;
             }
 
             self.loans.insert(loan_id, &loan);
@@ -942,7 +940,7 @@ pub mod lending_contract {
             }
 
             let old_rate = loan.interest_rate;
-            let new_effective_rate = (new_base_rate * loan.risk_multiplier) / 1000;
+            let new_effective_rate = ((new_base_rate as u32 * loan.risk_multiplier as u32) / 1000) as u16;
             
             // Record the conversion
             let adjustment = InterestRateAdjustment {
@@ -963,9 +961,8 @@ pub mod lending_contract {
             // Recalculate remaining balance
             if loan.status == LoanStatus::Active || loan.status == LoanStatus::PartiallyPaid {
                 let new_total_repayment = loan.amount + ((loan.amount * new_effective_rate as u128) / 10000);
-                let principal_paid = loan.amount - (loan.remaining_balance - loan.total_late_fees);
-                let new_remaining_balance = new_total_repayment - principal_paid;
-                loan.remaining_balance = new_remaining_balance;
+                // For conversion, just set the new remaining balance
+                loan.remaining_balance = new_total_repayment;
             }
 
             self.loans.insert(loan_id, &loan);
