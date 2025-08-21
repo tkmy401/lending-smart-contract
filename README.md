@@ -11,6 +11,7 @@ A professional and secure lending smart contract built with Rust using the ink! 
 - **Partial Repayment**: Pay off loans in multiple smaller installments
 - **Loan Extension**: Extend loan duration with configurable fees
 - **Late Payment Penalties**: Automatic late fees for overdue loans
+- **Loan Refinancing**: Refinance loans with better terms and lower rates
 - **Collateral Management**: Secure collateral system with configurable ratios
 - **User Profiles**: Track user borrowing/lending history and credit scores
 - **Event System**: Comprehensive event logging for all operations
@@ -139,6 +140,11 @@ extend_loan(loan_id: u64, extension_duration: u64) -> Result<(), LendingError>
 apply_late_fees(loan_id: u64) -> Result<(), LendingError>
 ```
 
+#### Refinance Loan
+```rust
+refinance_loan(loan_id: u64, new_interest_rate: u16, new_duration: u64) -> Result<(), LendingError>
+```
+
 #### Query Functions
 ```rust
 get_loan(loan_id: u64) -> Option<Loan>
@@ -154,6 +160,10 @@ calculate_extension_fee(loan_id: u64) -> Result<Balance, LendingError>
 get_late_fee_info(loan_id: u64) -> Result<(Balance, u16, u16, Option<u64>), LendingError>
 calculate_current_late_fees(loan_id: u64) -> Result<Balance, LendingError>
 is_loan_overdue(loan_id: u64) -> Result<bool, LendingError>
+get_loan_refinance_info(loan_id: u64) -> Result<(u32, u32, u16), LendingError>
+can_refinance_loan(loan_id: u64) -> Result<bool, LendingError>
+calculate_refinance_fee(loan_id: u64) -> Result<Balance, LendingError>
+get_refinance_history(loan_id: u64) -> Result<Vec<RefinanceRecord>, LendingError>
 ```
 
 ## Testing

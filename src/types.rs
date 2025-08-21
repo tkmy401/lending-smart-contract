@@ -28,6 +28,11 @@ pub struct Loan {
     pub total_late_fees: Balance, // Total late fees accumulated
     pub overdue_since: Option<u64>, // Block number when loan became overdue
     pub grace_period: u64, // Grace period in blocks before late fees start (default: 100 = ~10 minutes)
+    pub refinance_count: u32, // Number of times loan has been refinanced
+    pub max_refinances: u32, // Maximum allowed refinances (default: 2)
+    pub refinance_fee_rate: u16, // Refinance fee in basis points (default: 200 = 2%)
+    pub original_loan_id: Option<u64>, // ID of the original loan if this is a refinanced loan
+    pub refinance_history: Vec<RefinanceRecord>, // History of refinancing operations
 }
 
 #[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
@@ -39,6 +44,7 @@ pub enum LoanStatus {
     Repaid,
     EarlyRepaid, // New status for early repayment
     Overdue, // New status for overdue loans
+    Refinanced, // New status for refinanced loans
     Defaulted,
     Liquidated,
 }
@@ -59,6 +65,18 @@ pub struct PartialPayment {
     pub amount: Balance,
     pub timestamp: u64, // Block number when payment was made
     pub payment_type: PaymentType,
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub struct RefinanceRecord {
+    pub timestamp: u64, // Block number when refinancing occurred
+    pub old_lender: AccountId, // Previous lender
+    pub new_lender: AccountId, // New lender
+    pub old_interest_rate: u16, // Previous interest rate
+    pub new_interest_rate: u16, // New interest rate
+    pub refinance_fee: Balance, // Fee paid for refinancing
+    pub remaining_balance: Balance, // Remaining balance at time of refinancing
 }
 
 #[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
