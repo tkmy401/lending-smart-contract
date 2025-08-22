@@ -3,7 +3,7 @@ use ink_prelude::vec::Vec;
 
 use crate::types::{
     Loan, LoanStatus, UserProfile, PartialPayment, PaymentType, RefinanceRecord,
-    InterestRateType, InterestRateAdjustment, RateAdjustmentReason
+    InterestRateType, InterestRateAdjustment, RateAdjustmentReason, InterestType, CompoundFrequency
 };
 use crate::errors::LendingError;
 
@@ -145,6 +145,17 @@ pub mod lending_contract {
         effective_rate: u16,
     }
 
+    #[ink(event)]
+    pub struct InterestCompounded {
+        #[ink(topic)]
+        loan_id: u64,
+        borrower: AccountId,
+        compound_period: u64,
+        interest_accrued: Balance,
+        total_compounded: Balance,
+        new_remaining_balance: Balance,
+    }
+
     impl LendingContract {
         // ============================================================================
         // CONSTRUCTOR
@@ -240,6 +251,12 @@ pub mod lending_contract {
                 interest_rate_adjustments: Vec::new(),
                 last_interest_update: current_block,
                 interest_update_frequency: 14400, // Default: daily updates (14400 blocks)
+                interest_type: InterestType::Simple, // Default to simple interest
+                compound_frequency: CompoundFrequency::Daily, // Default to daily compounding
+                last_compound_date: current_block,
+                compound_period_blocks: 14400, // Default: daily (14400 blocks)
+                accrued_interest: 0,
+                total_compounded_interest: 0,
             };
 
             self.loans.insert(loan_id, &loan);
@@ -978,6 +995,167 @@ pub mod lending_contract {
             });
 
             Ok(())
+        }
+
+        // ============================================================================
+        // COMPOUND INTEREST CALCULATION
+        // ============================================================================
+        
+        /// Calculate and apply compound interest for a loan
+        #[ink(message)]
+        pub fn compound_interest(&mut self, loan_id: u64) -> Result<(), LendingError> {
+            let caller = self.env().caller();
+            let mut loan = self.loans.get(loan_id).ok_or(LendingError::LoanNotFound)?;
+            
+            // Only lender or borrower can compound interest
+            if loan.lender != Some(caller) && loan.borrower != caller {
+                return Err(LendingError::Unauthorized);
+            }
+            
+            // Check if loan supports compound interest
+            if loan.interest_type != InterestType::Compound {
+                return Err(LendingError::InvalidAmount); // Reuse error for simple interest loan
+            }
+            
+            // Check if it's time to compound
+            let current_block = self.env().block_number() as u64;
+            if current_block < loan.last_compound_date + loan.compound_period_blocks {
+                return Err(LendingError::InvalidAmount); // Reuse error for too early to compound
+            }
+            
+            // Calculate compound interest
+            let periods_since_last_compound = (current_block - loan.last_compound_date) / loan.compound_period_blocks;
+            if periods_since_last_compound == 0 {
+                return Err(LendingError::InvalidAmount); // Reuse error for no periods to compound
+            }
+            
+            // Calculate the new balance with compound interest
+            let principal = loan.amount;
+            let rate_per_period = loan.interest_rate as f64 / 10000.0; // Convert basis points to decimal
+            let periods = periods_since_last_compound as f64;
+            
+            // Compound interest formula: A = P(1 + r)^n
+            let compound_factor = (1.0 + rate_per_period).powf(periods);
+            let new_total = (principal as f64 * compound_factor) as u128;
+            
+            // Calculate interest accrued
+            let interest_accrued = new_total - principal;
+            
+            // Update loan with compound interest
+            let _old_remaining_balance = loan.remaining_balance;
+            loan.remaining_balance = new_total;
+            loan.accrued_interest = 0; // Reset accrued interest
+            loan.total_compounded_interest += interest_accrued;
+            loan.last_compound_date = current_block;
+            
+            self.loans.insert(loan_id, &loan);
+            
+            self.env().emit_event(InterestCompounded {
+                loan_id,
+                borrower: loan.borrower,
+                compound_period: periods_since_last_compound,
+                interest_accrued,
+                total_compounded: loan.total_compounded_interest,
+                new_remaining_balance: loan.remaining_balance,
+            });
+            
+            Ok(())
+        }
+        
+        /// Switch loan from simple to compound interest
+        #[ink(message)]
+        pub fn convert_to_compound_interest(
+            &mut self,
+            loan_id: u64,
+            frequency: CompoundFrequency,
+        ) -> Result<(), LendingError> {
+            let caller = self.env().caller();
+            let mut loan = self.loans.get(loan_id).ok_or(LendingError::LoanNotFound)?;
+            
+            // Only lender can convert interest types
+            if loan.lender != Some(caller) {
+                return Err(LendingError::Unauthorized);
+            }
+            
+            // Check if loan is already compound
+            if loan.interest_type == InterestType::Compound {
+                return Err(LendingError::InvalidAmount); // Reuse error for already compound
+            }
+            
+            // Set compound frequency and calculate period blocks
+            let compound_period_blocks = match frequency {
+                CompoundFrequency::Daily => 14400,      // 14400 blocks per day
+                CompoundFrequency::Weekly => 100800,    // 100800 blocks per week
+                CompoundFrequency::Monthly => 432000,   // 432000 blocks per month
+                CompoundFrequency::Quarterly => 1296000, // 1296000 blocks per quarter
+                CompoundFrequency::Annually => 5184000,  // 5184000 blocks per year
+            };
+            
+            // Convert loan to compound interest
+            loan.interest_type = InterestType::Compound;
+            loan.compound_frequency = frequency;
+            loan.compound_period_blocks = compound_period_blocks;
+            loan.last_compound_date = self.env().block_number() as u64;
+            loan.accrued_interest = 0;
+            loan.total_compounded_interest = 0;
+            
+            // Recalculate remaining balance for compound interest
+            let current_block = self.env().block_number() as u64;
+            let blocks_since_creation = current_block - loan.created_at;
+            let periods = blocks_since_creation / compound_period_blocks;
+            
+            if periods > 0 {
+                let rate_per_period = loan.interest_rate as f64 / 10000.0;
+                let compound_factor = (1.0 + rate_per_period).powf(periods as f64);
+                let new_total = (loan.amount as f64 * compound_factor) as u128;
+                loan.remaining_balance = new_total;
+                loan.total_compounded_interest = new_total - loan.amount;
+            }
+            
+            self.loans.insert(loan_id, &loan);
+            
+            Ok(())
+        }
+        
+        /// Get compound interest information for a loan
+        #[ink(message)]
+        pub fn get_compound_interest_info(&self, loan_id: u64) -> Result<(InterestType, CompoundFrequency, u64, Balance, Balance), LendingError> {
+            let loan = self.loans.get(loan_id).ok_or(LendingError::LoanNotFound)?;
+            Ok((
+                loan.interest_type.clone(),
+                loan.compound_frequency.clone(),
+                loan.compound_period_blocks,
+                loan.accrued_interest,
+                loan.total_compounded_interest,
+            ))
+        }
+        
+        /// Calculate accrued interest for a loan (without compounding)
+        #[ink(message)]
+        pub fn calculate_accrued_interest(&self, loan_id: u64) -> Result<Balance, LendingError> {
+            let loan = self.loans.get(loan_id).ok_or(LendingError::LoanNotFound)?;
+            
+            let current_block = self.env().block_number() as u64;
+            let blocks_since_last_compound = current_block - loan.last_compound_date;
+            
+            if loan.interest_type == InterestType::Simple {
+                // Simple interest: P × r × t
+                let time_factor = blocks_since_last_compound as f64 / 14400.0; // Convert to days
+                let rate = loan.interest_rate as f64 / 10000.0;
+                let accrued = (loan.amount as f64 * rate * time_factor) as u128;
+                Ok(accrued)
+            } else {
+                // Compound interest: calculate what would be accrued
+                let periods = blocks_since_last_compound / loan.compound_period_blocks;
+                if periods == 0 {
+                    Ok(0)
+                } else {
+                    let rate_per_period = loan.interest_rate as f64 / 10000.0;
+                    let compound_factor = (1.0 + rate_per_period).powf(periods as f64);
+                    let new_total = (loan.amount as f64 * compound_factor) as u128;
+                    Ok(new_total - loan.amount)
+                }
+            }
         }
 
         // ============================================================================

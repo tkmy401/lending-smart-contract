@@ -39,6 +39,12 @@ pub struct Loan {
     pub interest_rate_adjustments: Vec<InterestRateAdjustment>, // History of rate changes
     pub last_interest_update: u64, // Block number of last interest rate update
     pub interest_update_frequency: u64, // How often interest rates can be updated (blocks)
+    pub interest_type: InterestType, // Simple or compound interest
+    pub compound_frequency: CompoundFrequency, // How often interest compounds
+    pub last_compound_date: u64, // Block number of last compound calculation
+    pub compound_period_blocks: u64, // Blocks per compound period
+    pub accrued_interest: Balance, // Interest accrued since last compound
+    pub total_compounded_interest: Balance, // Total interest from compounding
 }
 
 #[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
@@ -118,6 +124,23 @@ pub enum PaymentType {
     Partial,
     Full,
     Early,
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub enum InterestType {
+    Simple,     // Simple interest (principal × rate × time)
+    Compound,   // Compound interest (principal × (1 + rate)^time)
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub enum CompoundFrequency {
+    Daily,      // Compound every day (14400 blocks)
+    Weekly,     // Compound every week (100800 blocks)
+    Monthly,    // Compound every month (432000 blocks)
+    Quarterly,  // Compound every quarter (1296000 blocks)
+    Annually,   // Compound every year (5184000 blocks)
 }
 
 pub type AccountId = <ink_env::DefaultEnvironment as ink_env::Environment>::AccountId;
