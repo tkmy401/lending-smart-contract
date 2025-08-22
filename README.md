@@ -13,6 +13,7 @@ A professional and secure lending smart contract built with Rust using the ink! 
 - **Late Payment Penalties**: Automatic late fees for overdue loans
 - **Loan Refinancing**: Refinance loans with better terms and lower rates
 - **Variable Interest Rates**: Dynamic rates with risk-based pricing
+- **Compound Interest Calculation**: Sophisticated interest computation with multiple frequencies
 - **Collateral Management**: Secure collateral system with configurable ratios
 - **User Profiles**: Track user borrowing/lending history and credit scores
 - **Event System**: Comprehensive event logging for all operations
@@ -151,6 +152,14 @@ refinance_loan(loan_id: u64, new_interest_rate: u16, new_duration: u64) -> Resul
 adjust_interest_rate(loan_id: u64, new_base_rate: u16, reason: RateAdjustmentReason) -> Result<(), LendingError>
 update_risk_multiplier(loan_id: u64, new_risk_multiplier: u16) -> Result<(), LendingError>
 convert_to_variable_rate(loan_id: u64, new_base_rate: u16) -> Result<(), LendingError>
+```
+
+#### Compound Interest Management
+```rust
+convert_to_compound_interest(loan_id: u64, frequency: CompoundFrequency) -> Result<(), LendingError>
+compound_interest(loan_id: u64) -> Result<(), LendingError>
+get_compound_interest_info(loan_id: u64) -> Result<(InterestType, CompoundFrequency, u64, Balance, Balance), LendingError>
+calculate_accrued_interest(loan_id: u64) -> Result<Balance, LendingError>
 ```
 
 #### Query Functions

@@ -6,7 +6,7 @@ use ink::env::{
     test,
 };
 
-use lending_smart_contract::{LendingContract, types::RateAdjustmentReason, errors::LendingError};
+use lending_smart_contract::{LendingContract, types::{RateAdjustmentReason, CompoundFrequency}, errors::LendingError};
 
 /// Example demonstrating advanced features of the lending smart contract
 fn main() {
@@ -355,6 +355,161 @@ fn main() {
     println!("  - Rate adjustment history tracking");
     println!("  - Update frequency controls");
     println!("  - Market-responsive lending");
+
+    // ============================================================================
+    // COMPOUND INTEREST FEATURES DEMONSTRATION
+    // ============================================================================
+    println!("\n--- Testing Compound Interest Features ---");
+    
+    // Test 1: Convert loan to compound interest
+    println!("\n1. Converting Loan 1 to Compound Interest...");
+    test::set_caller::<DefaultEnvironment>(accounts.django); // Lender can convert
+    
+    // Check current loan state
+    let loan_info = contract.get_loan(1).unwrap();
+    println!("   Current interest type: {:?}", loan_info.interest_type);
+    println!("   Current interest rate: {} basis points ({}%)", loan_info.interest_rate, loan_info.interest_rate as f64 / 100.0);
+    println!("   Current remaining balance: {}", loan_info.remaining_balance);
+    
+    // Convert to compound interest (daily compounding)
+    match contract.convert_to_compound_interest(1, CompoundFrequency::Daily) {
+        Ok(_) => {
+            println!("   ✅ Successfully converted to compound interest!");
+            let updated_loan = contract.get_loan(1).unwrap();
+            println!("   New interest type: {:?}", updated_loan.interest_type);
+            println!("   Compound frequency: {:?}", updated_loan.compound_frequency);
+            println!("   Compound period blocks: {}", updated_loan.compound_period_blocks);
+            println!("   New remaining balance: {}", updated_loan.remaining_balance);
+            println!("   Total compounded interest: {}", updated_loan.total_compounded_interest);
+        }
+        Err(e) => println!("   ❌ Failed to convert to compound interest: {:?}", e),
+    }
+    
+    // Test 2: Demonstrate different compound frequencies
+    println!("\n2. Testing Different Compound Frequencies...");
+    
+    // Create a new loan for testing different frequencies
+    test::set_caller::<DefaultEnvironment>(accounts.frank);
+    let loan4_id = contract.create_loan(1000, 1000, 2000, 1500).unwrap(); // 10% interest, 2000 blocks
+    
+    // Fund the loan
+    test::set_caller::<DefaultEnvironment>(accounts.alice);
+    test::set_value_transferred::<DefaultEnvironment>(1000);
+    contract.fund_loan(loan4_id).unwrap();
+    
+    // Convert to monthly compound interest
+    test::set_caller::<DefaultEnvironment>(accounts.alice);
+    match contract.convert_to_compound_interest(loan4_id, CompoundFrequency::Monthly) {
+        Ok(_) => {
+            println!("   ✅ Successfully converted to monthly compound interest!");
+            let loan4 = contract.get_loan(loan4_id).unwrap();
+            println!("   Compound frequency: {:?}", loan4.compound_frequency);
+            println!("   Compound period: {} blocks ({} days)", loan4.compound_period_blocks, loan4.compound_period_blocks / 14400);
+            println!("   Initial balance: {}", loan4.amount);
+            println!("   Current remaining balance: {}", loan4.remaining_balance);
+        }
+        Err(e) => println!("   ❌ Failed to convert to monthly compound: {:?}", e),
+    }
+    
+    // Test 3: Calculate accrued interest
+    println!("\n3. Calculating Accrued Interest...");
+    
+    let loan1 = contract.get_loan(1).unwrap();
+    match contract.calculate_accrued_interest(1) {
+        Ok(accrued) => {
+            println!("   ✅ Accrued interest calculated successfully!");
+            println!("   Interest type: {:?}", loan1.interest_type);
+            println!("   Principal: {}", loan1.amount);
+            println!("   Interest rate: {} basis points ({}%)", loan1.interest_rate, loan1.interest_rate as f64 / 100.0);
+            println!("   Accrued interest: {}", accrued);
+            println!("   Total compounded interest: {}", loan1.total_compounded_interest);
+        }
+        Err(e) => println!("   ❌ Failed to calculate accrued interest: {:?}", e),
+    }
+    
+    // Test 4: Get compound interest information
+    println!("\n4. Compound Interest Information...");
+    
+    match contract.get_compound_interest_info(1) {
+        Ok((interest_type, frequency, period_blocks, accrued, total_compounded)) => {
+            println!("   ✅ Compound interest info retrieved successfully!");
+            println!("   Interest type: {:?}", interest_type);
+            println!("   Compound frequency: {:?}", frequency);
+            println!("   Period blocks: {} ({} days)", period_blocks, period_blocks / 14400);
+            println!("   Accrued interest: {}", accrued);
+            println!("   Total compounded interest: {}", total_compounded);
+        }
+        Err(e) => println!("   ❌ Failed to get compound interest info: {:?}", e),
+    }
+    
+    // Test 5: Demonstrate compound interest calculation
+    println!("\n5. Compound Interest Calculation Demonstration...");
+    
+    let loan1 = contract.get_loan(1).unwrap();
+    let principal = loan1.amount as f64;
+    let rate = loan1.interest_rate as f64 / 10000.0; // Convert basis points to decimal
+    let periods = 1.0; // 1 day
+    
+    // Compound interest formula: A = P(1 + r)^n
+    let compound_factor = (1.0 + rate).powf(periods);
+    let new_total = principal * compound_factor;
+    let interest_accrued = new_total - principal;
+    
+    println!("   Compound Interest Formula: A = P(1 + r)^n");
+    println!("   Where:");
+    println!("     P = Principal = {}", principal);
+    println!("     r = Rate per period = {} = {}%", rate, rate * 100.0);
+    println!("     n = Number of periods = {}", periods);
+    println!("   Calculation:");
+    println!("     A = {} × (1 + {})^{}", principal, rate, periods);
+    println!("     A = {} × {}", principal, compound_factor);
+    println!("     A = {}", new_total);
+    println!("   Interest accrued: {} - {} = {}", new_total, principal, interest_accrued);
+    
+    // Test 6: Show different compound frequencies comparison
+    println!("\n6. Compound Frequency Comparison...");
+    
+    let frequencies = [
+        (CompoundFrequency::Daily, "Daily", 14400),
+        (CompoundFrequency::Weekly, "Weekly", 100800),
+        (CompoundFrequency::Monthly, "Monthly", 432000),
+        (CompoundFrequency::Quarterly, "Quarterly", 1296000),
+        (CompoundFrequency::Annually, "Annually", 5184000),
+    ];
+    
+    println!("   Compound Frequency Comparison (Principal: 1000, Rate: 10%, 1 year):");
+    println!("   ┌─────────────┬─────────────┬─────────────┬─────────────────┐");
+    println!("   │ Frequency   │ Periods/Yr │ Rate/Period │ Final Amount    │");
+    println!("   ├─────────────┼─────────────┼─────────────┼─────────────────┤");
+    
+    for (_freq, name, blocks) in frequencies.iter() {
+        let periods_per_year = 5184000 / blocks; // 5184000 blocks per year
+        let rate_per_period = 0.10 / periods_per_year as f64; // 10% annual rate
+        let compound_factor = (1.0 + rate_per_period).powf(periods_per_year as f64);
+        let final_amount = 1000.0 * compound_factor;
+        
+        println!("   │ {:<11} │ {:<11} │ {:<11.6} │ {:<15.2} │", name, periods_per_year, rate_per_period, final_amount);
+    }
+    println!("   └─────────────┴─────────────┴─────────────┴─────────────────┘");
+    
+    // Test 7: Show current loan states
+    println!("\n7. Current Loan States with Interest Types...");
+    
+    for loan_id in 1..=4 {
+        if let Some(loan) = contract.get_loan(loan_id) {
+            println!("   Loan {}: {:?} interest, {:?} compounding, Balance: {}", 
+                loan_id, loan.interest_type, loan.compound_frequency, loan.remaining_balance);
+        }
+    }
+    
+    println!("\n🎉 Compound Interest Features demonstration completed!");
+    println!("This demonstrates:");
+    println!("  - Simple to compound interest conversion");
+    println!("  - Multiple compound frequencies (daily to annually)");
+    println!("  - Real-time interest accrual calculation");
+    println!("  - Compound interest formula implementation");
+    println!("  - Interest type management");
+    println!("  - Sophisticated financial calculations");
 
     // ============================================================================
     // COMPREHENSIVE LOAN QUERIES AND ANALYSIS
