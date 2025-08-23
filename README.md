@@ -162,6 +162,14 @@ get_compound_interest_info(loan_id: u64) -> Result<(InterestType, CompoundFreque
 calculate_accrued_interest(loan_id: u64) -> Result<Balance, LendingError>
 ```
 
+#### Interest-Only Payment Management
+```rust
+set_interest_only_periods(loan_id: u64, periods: u32, payment_period_blocks: u64) -> Result<(), LendingError>
+make_interest_only_payment(loan_id: u64) -> Result<(), LendingError>
+switch_to_principal_and_interest(loan_id: u64) -> Result<(), LendingError>
+get_payment_structure_info(loan_id: u64) -> Result<(PaymentStructure, u32, u32, u32, u64, Balance), LendingError>
+```
+
 #### Query Functions
 ```rust
 get_loan(loan_id: u64) -> Option<Loan>

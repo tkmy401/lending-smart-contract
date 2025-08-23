@@ -6,7 +6,7 @@ use ink::env::{
     test,
 };
 
-use lending_smart_contract::{LendingContract, types::{RateAdjustmentReason, CompoundFrequency}, errors::LendingError};
+use lending_smart_contract::{LendingContract, types::{RateAdjustmentReason, CompoundFrequency, PaymentStructure}, errors::LendingError};
 
 /// Example demonstrating advanced features of the lending smart contract
 fn main() {
@@ -510,6 +510,170 @@ fn main() {
     println!("  - Compound interest formula implementation");
     println!("  - Interest type management");
     println!("  - Sophisticated financial calculations");
+
+    // ============================================================================
+    // INTEREST-ONLY PAYMENT PERIODS DEMONSTRATION
+    // ============================================================================
+    println!("\n--- Testing Interest-Only Payment Periods ---");
+    
+    // Test 1: Set up interest-only payment structure
+    println!("\n1. Setting Up Interest-Only Payment Structure...");
+    test::set_caller::<DefaultEnvironment>(accounts.django); // Lender can set payment structure
+    
+    // Check current loan state
+    let loan_info = contract.get_loan(1).unwrap();
+    println!("   Current payment structure: {:?}", loan_info.payment_structure);
+    println!("   Current remaining balance: {}", loan_info.remaining_balance);
+    println!("   Current interest rate: {} basis points ({}%)", loan_info.interest_rate, loan_info.interest_rate as f64 / 100.0);
+    
+    // Set loan to interest-only for 3 periods (daily payments)
+    match contract.set_interest_only_periods(1, 3, 14400) { // 3 periods, daily (14400 blocks)
+        Ok(_) => {
+            println!("   ✅ Successfully set to interest-only payment structure!");
+            let updated_loan = contract.get_loan(1).unwrap();
+            println!("   New payment structure: {:?}", updated_loan.payment_structure);
+            println!("   Interest-only periods: {}/{}", updated_loan.interest_only_periods_used, updated_loan.interest_only_periods);
+            println!("   Payment period blocks: {} ({} days)", updated_loan.payment_period_blocks, updated_loan.payment_period_blocks / 14400);
+            println!("   Next payment due: block {}", updated_loan.next_payment_due);
+            println!("   Minimum payment amount: {}", updated_loan.minimum_payment_amount);
+        }
+        Err(e) => println!("   ❌ Failed to set interest-only structure: {:?}", e),
+    }
+    
+    // Test 2: Demonstrate different payment structures
+    println!("\n2. Testing Different Payment Structures...");
+    
+    // Create a new loan for testing different payment structures
+    test::set_caller::<DefaultEnvironment>(accounts.frank);
+    let loan5_id = contract.create_loan(1500, 1200, 3000, 2250).unwrap(); // 12% interest, 3000 blocks
+    
+    // Fund the loan
+    test::set_caller::<DefaultEnvironment>(accounts.bob);
+    test::set_value_transferred::<DefaultEnvironment>(1500);
+    contract.fund_loan(loan5_id).unwrap();
+    
+    // Set to weekly interest-only payments for 2 periods
+    test::set_caller::<DefaultEnvironment>(accounts.bob);
+    match contract.set_interest_only_periods(loan5_id, 2, 100800) { // 2 periods, weekly (100800 blocks)
+        Ok(_) => {
+            println!("   ✅ Successfully set to weekly interest-only structure!");
+            let loan5 = contract.get_loan(loan5_id).unwrap();
+            println!("   Payment structure: {:?}", loan5.payment_structure);
+            println!("   Interest-only periods: {}/{}", loan5.interest_only_periods_used, loan5.interest_only_periods);
+            println!("   Payment period: {} blocks ({} days)", loan5.payment_period_blocks, loan5.payment_period_blocks / 14400);
+            println!("   Next payment due: block {}", loan5.next_payment_due);
+        }
+        Err(e) => println!("   ❌ Failed to set weekly interest-only: {:?}", e),
+    }
+    
+    // Test 3: Make interest-only payments
+    println!("\n3. Making Interest-Only Payments...");
+    
+    // Get payment structure info
+    match contract.get_payment_structure_info(1) {
+        Ok((structure, total_periods, used_periods, current_period, next_due, min_payment)) => {
+            println!("   ✅ Payment structure info retrieved successfully!");
+            println!("   Structure: {:?}", structure);
+            println!("   Interest-only periods: {}/{}", used_periods, total_periods);
+            println!("   Current period: {}", current_period);
+            println!("   Next payment due: block {}", next_due);
+            println!("   Minimum payment: {}", min_payment);
+        }
+        Err(e) => println!("   ❌ Failed to get payment structure info: {:?}", e),
+    }
+    
+    // Test 4: Demonstrate payment schedule
+    println!("\n4. Payment Schedule Demonstration...");
+    
+    let loan1 = contract.get_loan(1).unwrap();
+    let principal = loan1.amount as f64;
+    let rate = loan1.interest_rate as f64 / 10000.0; // Convert basis points to decimal
+    let period_blocks = loan1.payment_period_blocks as f64;
+    let time_factor = period_blocks / 5184000.0; // Convert to years
+    
+    // Calculate interest payment for one period
+    let interest_payment = (principal * rate * time_factor) as u128;
+    
+    println!("   Payment Schedule for Loan 1:");
+    println!("   Principal: {}", principal);
+    println!("   Interest rate: {}% per year", rate * 100.0);
+    println!("   Payment period: {} blocks ({} days)", period_blocks, period_blocks / 14400.0);
+    println!("   Interest per period: {}", interest_payment);
+    println!("   Total interest-only periods: {}", loan1.interest_only_periods);
+    
+    // Show payment breakdown
+    println!("   ┌─────────────┬─────────────┬─────────────┬─────────────────┐");
+    println!("   │ Period      │ Payment     │ Principal   │ Remaining       │");
+    println!("   ├─────────────┼─────────────┼─────────────┼─────────────────┤");
+    
+    for period in 1..=loan1.interest_only_periods {
+        let remaining_principal = principal;
+        let payment = interest_payment;
+        println!("   │ {:<11} │ {:<11} │ {:<11} │ {:<15} │", 
+            period, payment, remaining_principal as u128, remaining_principal as u128);
+    }
+    
+    // After interest-only periods
+    let remaining_periods = (loan1.duration / loan1.payment_period_blocks) - loan1.interest_only_periods as u64;
+    if remaining_periods > 0 {
+        let principal_per_period = principal / remaining_periods as f64;
+        let total_payment = interest_payment + principal_per_period as u128;
+        
+        println!("   ├─────────────┼─────────────┼─────────────┼─────────────────┤");
+        println!("   │ P&I Periods │ {:<11} │ {:<11} │ {:<15} │", 
+            total_payment, principal_per_period as u128, 0);
+        println!("   └─────────────┴─────────────┴─────────────┴─────────────────┘");
+    } else {
+        println!("   └─────────────┴─────────────┴─────────────┴─────────────────┘");
+    }
+    
+    // Test 5: Switch back to principal and interest
+    println!("\n5. Switching to Principal and Interest...");
+    
+    test::set_caller::<DefaultEnvironment>(accounts.django); // Lender can switch
+    match contract.switch_to_principal_and_interest(1) {
+        Ok(_) => {
+            println!("   ✅ Successfully switched to P&I structure!");
+            let updated_loan = contract.get_loan(1).unwrap();
+            println!("   New payment structure: {:?}", updated_loan.payment_structure);
+            println!("   New minimum payment: {}", updated_loan.minimum_payment_amount);
+        }
+        Err(e) => println!("   ❌ Failed to switch to P&I: {:?}", e),
+    }
+    
+    // Test 6: Show current loan states with payment structures
+    println!("\n6. Current Loan States with Payment Structures...");
+    
+    for loan_id in 1..=5 {
+        if let Some(loan) = contract.get_loan(loan_id) {
+            let structure_str = match loan.payment_structure {
+                PaymentStructure::PrincipalAndInterest => "P&I",
+                PaymentStructure::InterestOnly => "Interest-Only",
+            };
+            println!("   Loan {}: {} structure, {} periods used, Balance: {}", 
+                loan_id, structure_str, loan.interest_only_periods_used, loan.remaining_balance);
+        }
+    }
+    
+    // Test 7: Demonstrate payment flexibility
+    println!("\n7. Payment Structure Flexibility...");
+    
+    println!("   This system provides:");
+    println!("   ✅ Flexible payment structures (Interest-Only ↔ P&I)");
+    println!("   ✅ Configurable payment periods (daily, weekly, monthly)");
+    println!("   ✅ Automatic structure switching after interest-only periods");
+    println!("   ✅ Real-time payment scheduling and due date tracking");
+    println!("   ✅ Minimum payment calculations for each structure");
+    println!("   ✅ Borrower-friendly payment options");
+    
+    println!("\n🎉 Interest-Only Payment Periods demonstration completed!");
+    println!("This demonstrates:");
+    println!("  - Flexible payment structure management");
+    println!("  - Interest-only payment periods with automatic switching");
+    println!("  - Configurable payment schedules and frequencies");
+    println!("  - Payment structure conversion and management");
+    println!("  - Real-time payment tracking and scheduling");
+    println!("  - Borrower-friendly payment options");
 
     // ============================================================================
     // COMPREHENSIVE LOAN QUERIES AND ANALYSIS
