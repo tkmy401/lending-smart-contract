@@ -3,7 +3,7 @@ use ink_prelude::vec::Vec;
 
 use crate::types::{
     Loan, LoanStatus, UserProfile, PartialPayment, PaymentType, RefinanceRecord,
-    InterestRateType, InterestRateAdjustment, RateAdjustmentReason, InterestType, CompoundFrequency
+    InterestRateType, InterestRateAdjustment, RateAdjustmentReason, InterestType, CompoundFrequency, PaymentStructure
 };
 use crate::errors::LendingError;
 
@@ -156,6 +156,17 @@ pub mod lending_contract {
         new_remaining_balance: Balance,
     }
 
+    #[ink(event)]
+    pub struct InterestOnlyPaymentMade {
+        #[ink(topic)]
+        loan_id: u64,
+        borrower: AccountId,
+        payment_period: u32,
+        interest_paid: Balance,
+        principal_remaining: Balance,
+        next_payment_due: u64,
+    }
+
     impl LendingContract {
         // ============================================================================
         // CONSTRUCTOR
@@ -257,6 +268,13 @@ pub mod lending_contract {
                 compound_period_blocks: 14400, // Default: daily (14400 blocks)
                 accrued_interest: 0,
                 total_compounded_interest: 0,
+                payment_structure: PaymentStructure::PrincipalAndInterest, // Default to P&I
+                interest_only_periods: 0, // Default: no interest-only periods
+                current_payment_period: 0,
+                interest_only_periods_used: 0,
+                next_payment_due: current_block + 14400, // First payment due in 1 day
+                payment_period_blocks: 14400, // Default: daily payments (14400 blocks)
+                minimum_payment_amount: 0, // No minimum initially
             };
 
             self.loans.insert(loan_id, &loan);
@@ -1156,6 +1174,166 @@ pub mod lending_contract {
                     Ok(new_total - loan.amount)
                 }
             }
+        }
+
+        // ============================================================================
+        // INTEREST-ONLY PAYMENT PERIODS
+        // ============================================================================
+        
+        /// Set loan to interest-only payment structure for a specified number of periods
+        #[ink(message)]
+        pub fn set_interest_only_periods(
+            &mut self,
+            loan_id: u64,
+            periods: u32,
+            payment_period_blocks: u64,
+        ) -> Result<(), LendingError> {
+            let caller = self.env().caller();
+            let mut loan = self.loans.get(loan_id).ok_or(LendingError::LoanNotFound)?;
+            
+            // Only lender can set payment structure
+            if loan.lender != Some(caller) {
+                return Err(LendingError::Unauthorized);
+            }
+            
+            // Check if loan is active
+            if loan.status != LoanStatus::Active {
+                return Err(LendingError::LoanNotActive);
+            }
+            
+            // Validate payment period blocks (minimum 1 day)
+            if payment_period_blocks < 14400 {
+                return Err(LendingError::InvalidAmount); // Reuse error for invalid period
+            }
+            
+            // Set interest-only structure
+            loan.payment_structure = PaymentStructure::InterestOnly;
+            loan.interest_only_periods = periods;
+            loan.payment_period_blocks = payment_period_blocks;
+            loan.next_payment_due = self.env().block_number() as u64 + payment_period_blocks;
+            loan.minimum_payment_amount = self.calculate_interest_payment(loan_id)?;
+            
+            self.loans.insert(loan_id, &loan);
+            
+            Ok(())
+        }
+        
+        /// Make an interest-only payment
+        #[ink(message)]
+        pub fn make_interest_only_payment(&mut self, loan_id: u64) -> Result<(), LendingError> {
+            let caller = self.env().caller();
+            let mut loan = self.loans.get(loan_id).ok_or(LendingError::LoanNotFound)?;
+            
+            // Check if caller is the borrower
+            if loan.borrower != caller {
+                return Err(LendingError::Unauthorized);
+            }
+            
+            // Check if loan supports interest-only payments
+            if loan.payment_structure != PaymentStructure::InterestOnly {
+                return Err(LendingError::InvalidAmount); // Reuse error for wrong payment type
+            }
+            
+            // Check if it's time for payment
+            let current_block = self.env().block_number() as u64;
+            if current_block < loan.next_payment_due {
+                return Err(LendingError::InvalidAmount); // Reuse error for too early
+            }
+            
+            // Check if interest-only periods are available
+            if loan.interest_only_periods_used >= loan.interest_only_periods {
+                return Err(LendingError::InvalidAmount); // Reuse error for no more periods
+            }
+            
+            // Calculate interest payment for this period
+            let interest_payment = self.calculate_interest_payment(loan_id)?;
+            
+            // Update loan state
+            loan.current_payment_period += 1;
+            loan.interest_only_periods_used += 1;
+            loan.next_payment_due = current_block + loan.payment_period_blocks;
+            
+            // If this was the last interest-only period, switch to P&I
+            if loan.interest_only_periods_used >= loan.interest_only_periods {
+                loan.payment_structure = PaymentStructure::PrincipalAndInterest;
+                loan.minimum_payment_amount = self.calculate_minimum_payment(loan_id)?;
+            }
+            
+            self.loans.insert(loan_id, &loan);
+            
+            self.env().emit_event(InterestOnlyPaymentMade {
+                loan_id,
+                borrower: loan.borrower,
+                payment_period: loan.current_payment_period,
+                interest_paid: interest_payment,
+                principal_remaining: loan.amount,
+                next_payment_due: loan.next_payment_due,
+            });
+            
+            Ok(())
+        }
+        
+        /// Switch back to principal and interest payments
+        #[ink(message)]
+        pub fn switch_to_principal_and_interest(&mut self, loan_id: u64) -> Result<(), LendingError> {
+            let caller = self.env().caller();
+            let mut loan = self.loans.get(loan_id).ok_or(LendingError::LoanNotFound)?;
+            
+            // Only lender can change payment structure
+            if loan.lender != Some(caller) {
+                return Err(LendingError::Unauthorized);
+            }
+            
+            // Check if loan is active
+            if loan.status != LoanStatus::Active {
+                return Err(LendingError::LoanNotActive);
+            }
+            
+            // Switch to P&I structure
+            loan.payment_structure = PaymentStructure::PrincipalAndInterest;
+            loan.minimum_payment_amount = self.calculate_minimum_payment(loan_id)?;
+            
+            self.loans.insert(loan_id, &loan);
+            
+            Ok(())
+        }
+        
+        /// Get payment structure information for a loan
+        #[ink(message)]
+        pub fn get_payment_structure_info(&self, loan_id: u64) -> Result<(PaymentStructure, u32, u32, u32, u64, Balance), LendingError> {
+            let loan = self.loans.get(loan_id).ok_or(LendingError::LoanNotFound)?;
+            Ok((
+                loan.payment_structure.clone(),
+                loan.interest_only_periods,
+                loan.interest_only_periods_used,
+                loan.current_payment_period,
+                loan.next_payment_due,
+                loan.minimum_payment_amount,
+            ))
+        }
+        
+        /// Calculate interest payment for current period
+        fn calculate_interest_payment(&self, loan_id: u64) -> Result<Balance, LendingError> {
+            let loan = self.loans.get(loan_id).ok_or(LendingError::LoanNotFound)?;
+            
+            let rate = loan.interest_rate as f64 / 10000.0; // Convert basis points to decimal
+            let time_factor = loan.payment_period_blocks as f64 / 5184000.0; // Convert to years
+            let interest = (loan.amount as f64 * rate * time_factor) as u128;
+            
+            Ok(interest)
+        }
+        
+        /// Calculate minimum payment for P&I structure
+        fn calculate_minimum_payment(&self, loan_id: u64) -> Result<Balance, LendingError> {
+            let loan = self.loans.get(loan_id).ok_or(LendingError::LoanNotFound)?;
+            
+            // Simple P&I calculation: (Principal × Rate × Time) + (Principal / Total Periods)
+            let rate = loan.interest_rate as f64 / 10000.0;
+            let time_factor = loan.payment_period_blocks as f64 / 5184000.0;
+            let interest = (loan.amount as f64 * rate * time_factor) as u128;
+            let principal = loan.amount / ((loan.duration / loan.payment_period_blocks) as u128);
+            
+            Ok(interest + principal)
         }
 
         // ============================================================================

@@ -45,6 +45,13 @@ pub struct Loan {
     pub compound_period_blocks: u64, // Blocks per compound period
     pub accrued_interest: Balance, // Interest accrued since last compound
     pub total_compounded_interest: Balance, // Total interest from compounding
+    pub payment_structure: PaymentStructure, // Type of payment structure
+    pub interest_only_periods: u32, // Total interest-only periods allowed
+    pub current_payment_period: u32, // Current payment period number
+    pub interest_only_periods_used: u32, // Interest-only periods already used
+    pub next_payment_due: u64, // Block number when next payment is due
+    pub payment_period_blocks: u64, // Blocks per payment period
+    pub minimum_payment_amount: Balance, // Minimum payment required per period
 }
 
 #[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
@@ -141,6 +148,13 @@ pub enum CompoundFrequency {
     Monthly,    // Compound every month (432000 blocks)
     Quarterly,  // Compound every quarter (1296000 blocks)
     Annually,   // Compound every year (5184000 blocks)
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub enum PaymentStructure {
+    PrincipalAndInterest,
+    InterestOnly,
 }
 
 pub type AccountId = <ink_env::DefaultEnvironment as ink_env::Environment>::AccountId;
