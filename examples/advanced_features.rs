@@ -6,7 +6,7 @@ use ink::env::{
     test,
 };
 
-use lending_smart_contract::{LendingContract, types::{RateAdjustmentReason, CompoundFrequency, PaymentStructure}, errors::LendingError};
+use lending_smart_contract::{LendingContract, types::{RateAdjustmentReason, CompoundFrequency, PaymentStructure, GracePeriodReason}, errors::LendingError};
 
 /// Example demonstrating advanced features of the lending smart contract
 fn main() {
@@ -674,6 +674,170 @@ fn main() {
     println!("  - Payment structure conversion and management");
     println!("  - Real-time payment tracking and scheduling");
     println!("  - Borrower-friendly payment options");
+
+    // ============================================================================
+    // GRACE PERIOD MANAGEMENT DEMONSTRATION
+    // ============================================================================
+    println!("\n--- Testing Grace Period Management ---");
+    
+    // Test 1: Set up custom grace period for a loan
+    println!("\n1. Setting Up Custom Grace Period...");
+    test::set_caller::<DefaultEnvironment>(accounts.django); // Lender can set grace period
+    
+    // Check current loan state
+    let loan_info = contract.get_loan(1).unwrap();
+    println!("   Current grace period: {} blocks ({} minutes)", loan_info.grace_period_blocks, loan_info.grace_period_blocks / 600);
+    println!("   Grace period extensions used: {}/{}", loan_info.grace_period_extensions, loan_info.max_grace_period_extensions);
+    println!("   Current grace period reason: {:?}", loan_info.grace_period_reason);
+    
+    // Set custom grace period for the loan
+    match contract.set_custom_grace_period(1, 200, 3) { // 200 blocks grace period, max 3 extensions
+        Ok(_) => {
+            println!("   ✅ Successfully set custom grace period!");
+            let updated_loan = contract.get_loan(1).unwrap();
+            println!("   New grace period: {} blocks ({} minutes)", updated_loan.grace_period_blocks, updated_loan.grace_period_blocks / 600);
+            println!("   Max extensions allowed: {}", updated_loan.max_grace_period_extensions);
+        }
+        Err(e) => println!("   ❌ Failed to set custom grace period: {:?}", e),
+    }
+    
+    // Test 2: Grant grace period extension
+    println!("\n2. Granting Grace Period Extension...");
+    
+    // Grant grace period extension for good payment history
+    match contract.grant_grace_period(1, 100, GracePeriodReason::GoodPaymentHistory) {
+        Ok(_) => {
+            println!("   ✅ Successfully granted grace period extension!");
+            let updated_loan = contract.get_loan(1).unwrap();
+            println!("   New total grace period: {} blocks ({} minutes)", updated_loan.grace_period_blocks, updated_loan.grace_period_blocks / 600);
+            println!("   Extensions used: {}/{}", updated_loan.grace_period_extensions, updated_loan.max_grace_period_extensions);
+            println!("   Current reason: {:?}", updated_loan.grace_period_reason);
+        }
+        Err(e) => println!("   ❌ Failed to grant grace period: {:?}", e),
+    }
+    
+    // Test 3: Demonstrate different grace period reasons
+    println!("\n3. Testing Different Grace Period Reasons...");
+    
+    // Create a new loan for testing different grace period scenarios
+    test::set_caller::<DefaultEnvironment>(accounts.frank);
+    let loan6_id = contract.create_loan(800, 600, 1800, 1200).unwrap(); // 6% interest, 1800 blocks
+    
+    // Fund the loan
+    test::set_caller::<DefaultEnvironment>(accounts.charlie);
+    test::set_value_transferred::<DefaultEnvironment>(800);
+    contract.fund_loan(loan6_id).unwrap();
+    
+    // Grant grace period for first-time borrower
+    test::set_caller::<DefaultEnvironment>(accounts.charlie);
+    match contract.grant_grace_period(loan6_id, 150, GracePeriodReason::FirstTimeBorrower) {
+        Ok(_) => {
+            println!("   ✅ Successfully granted first-time borrower grace period!");
+            let loan6 = contract.get_loan(loan6_id).unwrap();
+            println!("   Grace period: {} blocks ({} minutes)", loan6.grace_period_blocks, loan6.grace_period_blocks / 600);
+            println!("   Reason: {:?}", loan6.grace_period_reason);
+        }
+        Err(e) => println!("   ❌ Failed to grant first-time borrower grace: {:?}", e),
+    }
+    
+    // Test 4: Get grace period information
+    println!("\n4. Grace Period Information...");
+    
+    match contract.get_grace_period_info(1) {
+        Ok((grace_blocks, grace_used, extensions, max_extensions, reason, history)) => {
+            println!("   ✅ Grace period info retrieved successfully!");
+            println!("   Total grace period: {} blocks ({} minutes)", grace_blocks, grace_blocks / 600);
+            println!("   Grace period used: {} blocks", grace_used);
+            println!("   Extensions used: {}/{}", extensions, max_extensions);
+            println!("   Current reason: {:?}", reason);
+            println!("   History records: {}", history.len());
+            
+            // Show grace period history
+            for (i, record) in history.iter().enumerate() {
+                println!("     Record {}: {:?} - {} blocks - Extension #{}", 
+                    i + 1, record.reason, record.duration, record.extension_number);
+            }
+        }
+        Err(e) => println!("   ❌ Failed to get grace period info: {:?}", e),
+    }
+    
+    // Test 5: Check grace period status
+    println!("\n5. Checking Grace Period Status...");
+    
+    // Check if loan is within grace period
+    match contract.is_within_grace_period(1) {
+        Ok(within_grace) => {
+            println!("   ✅ Grace period status checked successfully!");
+            println!("   Is within grace period: {}", within_grace);
+        }
+        Err(e) => println!("   ❌ Failed to check grace period status: {:?}", e),
+    }
+    
+    // Calculate remaining grace period
+    match contract.calculate_remaining_grace_period(1) {
+        Ok(remaining) => {
+            println!("   ✅ Remaining grace period calculated!");
+            println!("   Remaining grace period: {} blocks ({} minutes)", remaining, remaining / 600);
+        }
+        Err(e) => println!("   ❌ Failed to calculate remaining grace period: {:?}", e),
+    }
+    
+    // Test 6: Demonstrate grace period flexibility
+    println!("\n6. Grace Period Flexibility Demonstration...");
+    
+    let grace_reasons = [
+        (GracePeriodReason::FirstTimeBorrower, "First Time Borrower", 200),
+        (GracePeriodReason::GoodPaymentHistory, "Good Payment History", 150),
+        (GracePeriodReason::MarketConditions, "Market Conditions", 100),
+        (GracePeriodReason::LenderDiscretion, "Lender Discretion", 300),
+        (GracePeriodReason::EmergencyCircumstances, "Emergency Circumstances", 500),
+    ];
+    
+    println!("   Grace Period Reasons and Default Durations:");
+    println!("   ┌─────────────────────────┬─────────────────────┬─────────────┐");
+    println!("   │ Reason                  │ Description         │ Duration    │");
+    println!("   ├─────────────────────────┼─────────────────────┼─────────────┤");
+    
+    for (reason, description, duration) in grace_reasons.iter() {
+        println!("   │ {:<23} │ {:<19} │ {:<11} │", 
+            format!("{:?}", reason), description, format!("{} blocks", duration));
+    }
+    println!("   └─────────────────────────┴─────────────────────┴─────────────┘");
+    
+    // Test 7: Show current loan states with grace periods
+    println!("\n7. Current Loan States with Grace Periods...");
+    
+            for loan_id in 1..=6 {
+            if let Some(loan) = contract.get_loan(loan_id) {
+                let grace_str = match loan.grace_period_reason {
+                    GracePeriodReason::None => "None",
+                    _ => "Active",
+                };
+                println!("   Loan {}: Grace period: {} ({} blocks), Extensions: {}/{}", 
+                    loan_id, grace_str, loan.grace_period_blocks, loan.grace_period_extensions, loan.max_grace_period_extensions);
+            }
+        }
+    
+    // Test 8: Demonstrate grace period benefits
+    println!("\n8. Grace Period Benefits and Features...");
+    
+    println!("   This system provides:");
+    println!("   ✅ Configurable grace periods (100 blocks to 1 week)");
+    println!("   ✅ Multiple grace period reasons with different durations");
+    println!("   ✅ Grace period extensions (up to configurable maximum)");
+    println!("   ✅ Complete grace period history tracking");
+    println!("   ✅ Real-time grace period status monitoring");
+    println!("   ✅ Flexible grace period management by lenders");
+    println!("   ✅ Borrower-friendly late payment handling");
+    
+    println!("\n🎉 Grace Period Management demonstration completed!");
+    println!("This demonstrates:");
+    println!("  - Flexible grace period configuration and management");
+    println!("  - Multiple grace period reasons and durations");
+    println!("  - Grace period extensions with history tracking");
+    println!("  - Real-time grace period status monitoring");
+    println!("  - Lender-controlled grace period customization");
+    println!("  - Borrower-friendly late payment handling");
 
     // ============================================================================
     // COMPREHENSIVE LOAN QUERIES AND ANALYSIS

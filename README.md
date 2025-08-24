@@ -170,6 +170,15 @@ switch_to_principal_and_interest(loan_id: u64) -> Result<(), LendingError>
 get_payment_structure_info(loan_id: u64) -> Result<(PaymentStructure, u32, u32, u32, u64, Balance), LendingError>
 ```
 
+#### Grace Period Management
+```rust
+grant_grace_period(loan_id: u64, duration: u64, reason: GracePeriodReason) -> Result<(), LendingError>
+is_within_grace_period(loan_id: u64) -> Result<bool, LendingError>
+get_grace_period_info(loan_id: u64) -> Result<(u64, u64, u32, u32, GracePeriodReason, Vec<GracePeriodRecord>), LendingError>
+calculate_remaining_grace_period(loan_id: u64) -> Result<u64, LendingError>
+set_custom_grace_period(loan_id: u64, grace_period_blocks: u64, max_extensions: u32) -> Result<(), LendingError>
+```
+
 #### Query Functions
 ```rust
 get_loan(loan_id: u64) -> Option<Loan>

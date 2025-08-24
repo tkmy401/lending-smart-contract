@@ -52,6 +52,12 @@ pub struct Loan {
     pub next_payment_due: u64, // Block number when next payment is due
     pub payment_period_blocks: u64, // Blocks per payment period
     pub minimum_payment_amount: Balance, // Minimum payment required per period
+    pub grace_period_blocks: u64, // Grace period in blocks (configurable)
+    pub grace_period_used: u64, // How much of grace period has been used
+    pub grace_period_extensions: u32, // Number of grace period extensions used
+    pub max_grace_period_extensions: u32, // Maximum grace period extensions allowed
+    pub grace_period_reason: GracePeriodReason, // Reason for grace period
+    pub grace_period_history: Vec<GracePeriodRecord>, // History of grace period usage
 }
 
 #[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
@@ -155,6 +161,27 @@ pub enum CompoundFrequency {
 pub enum PaymentStructure {
     PrincipalAndInterest,
     InterestOnly,
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub enum GracePeriodReason {
+    None,                    // No grace period
+    FirstTimeBorrower,       // New borrower benefit
+    GoodPaymentHistory,      // Reward for good payment history
+    MarketConditions,        // Market volatility considerations
+    LenderDiscretion,        // Lender's discretionary grace period
+    EmergencyCircumstances,  // Special circumstances
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub struct GracePeriodRecord {
+    pub timestamp: u64,           // When grace period was granted
+    pub reason: GracePeriodReason, // Reason for grace period
+    pub duration: u64,            // Duration in blocks
+    pub extension_number: u32,    // Which extension this was
+    pub granted_by: AccountId,    // Who granted the grace period
 }
 
 pub type AccountId = <ink_env::DefaultEnvironment as ink_env::Environment>::AccountId;
