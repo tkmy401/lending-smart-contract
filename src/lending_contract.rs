@@ -3,7 +3,8 @@ use ink_prelude::vec::Vec;
 
 use crate::types::{
     Loan, LoanStatus, UserProfile, PartialPayment, PaymentType, RefinanceRecord,
-    InterestRateType, InterestRateAdjustment, RateAdjustmentReason, InterestType, CompoundFrequency, PaymentStructure
+    InterestRateType, InterestRateAdjustment, RateAdjustmentReason, InterestType, CompoundFrequency, PaymentStructure,
+    GracePeriodReason, GracePeriodRecord
 };
 use crate::errors::LendingError;
 
@@ -167,6 +168,18 @@ pub mod lending_contract {
         next_payment_due: u64,
     }
 
+    #[ink(event)]
+    pub struct GracePeriodGranted {
+        #[ink(topic)]
+        loan_id: u64,
+        borrower: AccountId,
+        reason: GracePeriodReason,
+        duration: u64,
+        extension_number: u32,
+        granted_by: AccountId,
+        total_grace_period: u64,
+    }
+
     impl LendingContract {
         // ============================================================================
         // CONSTRUCTOR
@@ -275,6 +288,12 @@ pub mod lending_contract {
                 next_payment_due: current_block + 14400, // First payment due in 1 day
                 payment_period_blocks: 14400, // Default: daily payments (14400 blocks)
                 minimum_payment_amount: 0, // No minimum initially
+                grace_period_blocks: 100, // Default: 100 blocks grace period (~10 minutes)
+                grace_period_used: 0,
+                grace_period_extensions: 0,
+                max_grace_period_extensions: 2, // Default: maximum 2 grace period extensions
+                grace_period_reason: GracePeriodReason::None,
+                grace_period_history: Vec::new(),
             };
 
             self.loans.insert(loan_id, &loan);
@@ -1334,6 +1353,160 @@ pub mod lending_contract {
             let principal = loan.amount / ((loan.duration / loan.payment_period_blocks) as u128);
             
             Ok(interest + principal)
+        }
+
+        // ============================================================================
+        // GRACE PERIOD MANAGEMENT
+        // ============================================================================
+        
+        /// Grant or extend grace period for a loan
+        #[ink(message)]
+        pub fn grant_grace_period(
+            &mut self,
+            loan_id: u64,
+            duration: u64,
+            reason: GracePeriodReason,
+        ) -> Result<(), LendingError> {
+            let caller = self.env().caller();
+            let mut loan = self.loans.get(loan_id).ok_or(LendingError::LoanNotFound)?;
+            
+            // Only lender can grant grace periods
+            if loan.lender != Some(caller) {
+                return Err(LendingError::Unauthorized);
+            }
+            
+            // Check if loan is active
+            if loan.status != LoanStatus::Active {
+                return Err(LendingError::LoanNotActive);
+            }
+            
+            // Validate grace period duration (minimum 100 blocks, maximum 1 day)
+            if duration < 100 || duration > 14400 {
+                return Err(LendingError::InvalidAmount); // Reuse error for invalid duration
+            }
+            
+            // Check if grace period extensions are available
+            if loan.grace_period_extensions >= loan.max_grace_period_extensions {
+                return Err(LendingError::InvalidAmount); // Reuse error for no more extensions
+            }
+            
+            // Calculate new grace period
+            let new_grace_period = loan.grace_period_blocks + duration;
+            let extension_number = loan.grace_period_extensions + 1;
+            
+            // Update loan grace period
+            loan.grace_period_blocks = new_grace_period;
+            loan.grace_period_extensions = extension_number;
+            loan.grace_period_reason = reason.clone();
+            
+            // Record grace period history
+            let grace_record = GracePeriodRecord {
+                timestamp: self.env().block_number() as u64,
+                reason: reason.clone(),
+                duration,
+                extension_number,
+                granted_by: caller,
+            };
+            loan.grace_period_history.push(grace_record);
+            
+            self.loans.insert(loan_id, &loan);
+            
+            self.env().emit_event(GracePeriodGranted {
+                loan_id,
+                borrower: loan.borrower,
+                reason,
+                duration,
+                extension_number,
+                granted_by: caller,
+                total_grace_period: new_grace_period,
+            });
+            
+            Ok(())
+        }
+        
+        /// Check if loan is within grace period
+        #[ink(message)]
+        pub fn is_within_grace_period(&self, loan_id: u64) -> Result<bool, LendingError> {
+            let loan = self.loans.get(loan_id).ok_or(LendingError::LoanNotFound)?;
+            
+            let current_block = self.env().block_number() as u64;
+            let overdue_since = loan.overdue_since.unwrap_or(0);
+            
+            if overdue_since == 0 {
+                return Ok(false); // Not overdue
+            }
+            
+            let grace_period_end = overdue_since + loan.grace_period_blocks;
+            Ok(current_block <= grace_period_end)
+        }
+        
+        /// Get grace period information for a loan
+        #[ink(message)]
+        pub fn get_grace_period_info(&self, loan_id: u64) -> Result<(u64, u64, u32, u32, GracePeriodReason, Vec<GracePeriodRecord>), LendingError> {
+            let loan = self.loans.get(loan_id).ok_or(LendingError::LoanNotFound)?;
+            Ok((
+                loan.grace_period_blocks,
+                loan.grace_period_used,
+                loan.grace_period_extensions,
+                loan.max_grace_period_extensions,
+                loan.grace_period_reason.clone(),
+                loan.grace_period_history.clone(),
+            ))
+        }
+        
+        /// Calculate remaining grace period for an overdue loan
+        #[ink(message)]
+        pub fn calculate_remaining_grace_period(&self, loan_id: u64) -> Result<u64, LendingError> {
+            let loan = self.loans.get(loan_id).ok_or(LendingError::LoanNotFound)?;
+            
+            let current_block = self.env().block_number() as u64;
+            let overdue_since = loan.overdue_since.unwrap_or(0);
+            
+            if overdue_since == 0 {
+                return Ok(0); // Not overdue
+            }
+            
+            let grace_period_end = overdue_since + loan.grace_period_blocks;
+            if current_block > grace_period_end {
+                return Ok(0); // Grace period expired
+            }
+            
+            Ok(grace_period_end - current_block)
+        }
+        
+        /// Set custom grace period for a loan (lender only)
+        #[ink(message)]
+        pub fn set_custom_grace_period(
+            &mut self,
+            loan_id: u64,
+            grace_period_blocks: u64,
+            max_extensions: u32,
+        ) -> Result<(), LendingError> {
+            let caller = self.env().caller();
+            let mut loan = self.loans.get(loan_id).ok_or(LendingError::LoanNotFound)?;
+            
+            // Only lender can set custom grace periods
+            if loan.lender != Some(caller) {
+                return Err(LendingError::Unauthorized);
+            }
+            
+            // Check if loan is active
+            if loan.status != LoanStatus::Active {
+                return Err(LendingError::LoanNotActive);
+            }
+            
+            // Validate grace period (minimum 100 blocks, maximum 1 week)
+            if grace_period_blocks < 100 || grace_period_blocks > 100800 {
+                return Err(LendingError::InvalidAmount); // Reuse error for invalid duration
+            }
+            
+            // Update grace period settings
+            loan.grace_period_blocks = grace_period_blocks;
+            loan.max_grace_period_extensions = max_extensions;
+            
+            self.loans.insert(loan_id, &loan);
+            
+            Ok(())
         }
 
         // ============================================================================
