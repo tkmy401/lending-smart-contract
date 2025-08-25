@@ -4,7 +4,7 @@ use ink_prelude::vec::Vec;
 use crate::types::{
     Loan, LoanStatus, UserProfile, PartialPayment, PaymentType, RefinanceRecord,
     InterestRateType, InterestRateAdjustment, RateAdjustmentReason, InterestType, CompoundFrequency, PaymentStructure,
-    GracePeriodReason, GracePeriodRecord
+    GracePeriodReason, GracePeriodRecord, LiquidityPool, PoolStatus, LiquidityProvider
 };
 use crate::errors::LendingError;
 
@@ -44,6 +44,9 @@ pub mod lending_contract {
         total_liquidity: Balance,
         protocol_fee: u16, // Basis points
         min_collateral_ratio: u16, // Basis points
+        total_pools: u64,
+        liquidity_pools: Mapping<u64, LiquidityPool>,
+        pool_liquidity_providers: Mapping<u64, Vec<AccountId>>,
     }
 
     // ============================================================================
@@ -180,6 +183,37 @@ pub mod lending_contract {
         total_grace_period: u64,
     }
 
+    #[ink(event)]
+    pub struct LiquidityPoolCreated {
+        #[ink(topic)]
+        pool_id: u64,
+        name: String,
+        creator: AccountId,
+        initial_liquidity: Balance,
+        pool_fee_rate: u16,
+        reward_rate: u16,
+    }
+
+    #[ink(event)]
+    pub struct LiquidityProvided {
+        #[ink(topic)]
+        pool_id: u64,
+        provider: AccountId,
+        amount: Balance,
+        pool_share: u16,
+        total_pool_liquidity: Balance,
+    }
+
+    #[ink(event)]
+    pub struct RewardsDistributed {
+        #[ink(topic)]
+        pool_id: u64,
+        provider: AccountId,
+        amount: Balance,
+        pool_share: u16,
+        total_rewards: Balance,
+    }
+
     impl LendingContract {
         // ============================================================================
         // CONSTRUCTOR
@@ -195,6 +229,9 @@ pub mod lending_contract {
                 total_liquidity: 0,
                 protocol_fee: 50, // 0.5%
                 min_collateral_ratio: 150, // 150%
+                total_pools: 0,
+                liquidity_pools: Mapping::default(),
+                pool_liquidity_providers: Mapping::default(),
             }
         }
 
@@ -294,6 +331,10 @@ pub mod lending_contract {
                 max_grace_period_extensions: 2, // Default: maximum 2 grace period extensions
                 grace_period_reason: GracePeriodReason::None,
                 grace_period_history: Vec::new(),
+                liquidity_pool_id: None,
+                pool_share: 0,
+                liquidity_provider: None,
+                pool_rewards_earned: 0,
             };
 
             self.loans.insert(loan_id, &loan);
@@ -1507,6 +1548,226 @@ pub mod lending_contract {
             self.loans.insert(loan_id, &loan);
             
             Ok(())
+        }
+
+        // ============================================================================
+        // LIQUIDITY POOL MANAGEMENT
+        // ============================================================================
+        
+        /// Create a new liquidity pool
+        #[ink(message)]
+        pub fn create_liquidity_pool(
+            &mut self,
+            name: String,
+            initial_liquidity: Balance,
+            pool_fee_rate: u16,
+            reward_rate: u16,
+            min_liquidity: Balance,
+            max_liquidity: Balance,
+        ) -> Result<u64, LendingError> {
+            let caller = self.env().caller();
+            
+            // Validate parameters
+            if initial_liquidity == 0 || pool_fee_rate > 1000 || reward_rate > 1000 {
+                return Err(LendingError::InvalidAmount);
+            }
+            
+            if min_liquidity >= max_liquidity {
+                return Err(LendingError::InvalidAmount);
+            }
+            
+            let pool_id = self.total_pools + 1;
+            let current_block = self.env().block_number() as u64;
+            
+            // Create liquidity pool
+            let pool = LiquidityPool {
+                id: pool_id,
+                name: name.clone(),
+                total_liquidity: initial_liquidity,
+                active_loans: 0,
+                total_volume: 0,
+                pool_fee_rate,
+                reward_rate,
+                min_liquidity,
+                max_liquidity,
+                created_at: current_block,
+                status: PoolStatus::Active,
+                liquidity_providers: Vec::new(),
+                total_rewards_distributed: 0,
+            };
+            
+            // Add creator as first liquidity provider
+            let creator_share = 10000; // 100% initially
+            let creator_provider = LiquidityProvider {
+                account: caller,
+                liquidity_provided: initial_liquidity,
+                pool_share: creator_share,
+                rewards_earned: 0,
+                joined_at: current_block,
+                last_reward_claim: current_block,
+            };
+            
+            let mut pool_with_provider = pool.clone();
+            pool_with_provider.liquidity_providers.push(creator_provider);
+            
+            // Store pool and update state
+            self.liquidity_pools.insert(pool_id, &pool_with_provider);
+            self.pool_liquidity_providers.insert(pool_id, &vec![caller]);
+            self.total_pools = pool_id;
+            
+            self.env().emit_event(LiquidityPoolCreated {
+                pool_id,
+                name,
+                creator: caller,
+                initial_liquidity,
+                pool_fee_rate,
+                reward_rate,
+            });
+            
+            Ok(pool_id)
+        }
+        
+        /// Provide liquidity to a pool
+        #[ink(message)]
+        pub fn provide_liquidity(&mut self, pool_id: u64, amount: Balance) -> Result<(), LendingError> {
+            let caller = self.env().caller();
+            let mut pool = self.liquidity_pools.get(pool_id).ok_or(LendingError::LoanNotFound)?;
+            
+            // Check if pool is active
+            if pool.status != PoolStatus::Active {
+                return Err(LendingError::LoanNotActive);
+            }
+            
+            // Validate amount
+            if amount == 0 || amount < pool.min_liquidity || pool.total_liquidity + amount > pool.max_liquidity {
+                return Err(LendingError::InvalidAmount);
+            }
+            
+            // Calculate new pool share
+            let new_total_liquidity = pool.total_liquidity + amount;
+            let new_provider_share = ((amount as u32 * 10000) / new_total_liquidity as u32) as u16;
+            
+            // Check if provider already exists
+            let existing_provider_index = pool.liquidity_providers.iter().position(|p| p.account == caller);
+            
+            if let Some(index) = existing_provider_index {
+                // Update existing provider
+                let mut provider = pool.liquidity_providers[index].clone();
+                provider.liquidity_provided += amount;
+                provider.pool_share = ((provider.liquidity_provided as u32 * 10000) / new_total_liquidity as u32) as u16;
+                pool.liquidity_providers[index] = provider;
+            } else {
+                // Add new provider
+                let new_provider = LiquidityProvider {
+                    account: caller,
+                    liquidity_provided: amount,
+                    pool_share: new_provider_share,
+                    rewards_earned: 0,
+                    joined_at: self.env().block_number() as u64,
+                    last_reward_claim: self.env().block_number() as u64,
+                };
+                pool.liquidity_providers.push(new_provider);
+            }
+            
+            // Update pool state
+            pool.total_liquidity = new_total_liquidity;
+            
+            // Update provider shares for all providers
+            for provider in &mut pool.liquidity_providers {
+                provider.pool_share = ((provider.liquidity_provided as u32 * 10000) / new_total_liquidity as u32) as u16;
+            }
+            
+            self.liquidity_pools.insert(pool_id, &pool);
+            
+            self.env().emit_event(LiquidityProvided {
+                pool_id,
+                provider: caller,
+                amount,
+                pool_share: new_provider_share,
+                total_pool_liquidity: new_total_liquidity,
+            });
+            
+            Ok(())
+        }
+        
+        /// Claim rewards from a liquidity pool
+        #[ink(message)]
+        pub fn claim_pool_rewards(&mut self, pool_id: u64) -> Result<Balance, LendingError> {
+            let caller = self.env().caller();
+            let mut pool = self.liquidity_pools.get(pool_id).ok_or(LendingError::LoanNotFound)?;
+            
+            // Check if pool is active
+            if pool.status != PoolStatus::Active {
+                return Err(LendingError::LoanNotActive);
+            }
+            
+            // Find the provider
+            let provider_index = pool.liquidity_providers.iter().position(|p| p.account == caller)
+                .ok_or(LendingError::Unauthorized)?;
+            
+            let mut provider = pool.liquidity_providers[provider_index].clone();
+            let current_block = self.env().block_number() as u64;
+            
+            // Calculate rewards based on time and pool share
+            let blocks_since_last_claim = current_block - provider.last_reward_claim;
+            let reward_rate_per_block = pool.reward_rate as f64 / 10000.0 / 5184000.0; // Convert to per-block rate
+            let rewards = (provider.liquidity_provided as f64 * reward_rate_per_block * blocks_since_last_claim as f64) as u128;
+            
+            if rewards == 0 {
+                return Err(LendingError::InvalidAmount); // No rewards to claim
+            }
+            
+            // Update provider state
+            provider.rewards_earned += rewards;
+            provider.last_reward_claim = current_block;
+            
+            // Update pool state
+            pool.total_rewards_distributed += rewards;
+            pool.liquidity_providers[provider_index] = provider.clone();
+            
+            self.liquidity_pools.insert(pool_id, &pool);
+            
+            self.env().emit_event(RewardsDistributed {
+                pool_id,
+                provider: caller,
+                amount: rewards,
+                pool_share: provider.pool_share,
+                total_rewards: pool.total_rewards_distributed,
+            });
+            
+            Ok(rewards)
+        }
+        
+        /// Get liquidity pool information
+        #[ink(message)]
+        pub fn get_liquidity_pool_info(&self, pool_id: u64) -> Result<(String, Balance, u32, Balance, u16, u16, PoolStatus), LendingError> {
+            let pool = self.liquidity_pools.get(pool_id).ok_or(LendingError::LoanNotFound)?;
+            Ok((
+                pool.name.clone(),
+                pool.total_liquidity,
+                pool.active_loans,
+                pool.total_volume,
+                pool.pool_fee_rate,
+                pool.reward_rate,
+                pool.status.clone(),
+            ))
+        }
+        
+        /// Get liquidity provider information
+        #[ink(message)]
+        pub fn get_liquidity_provider_info(&self, pool_id: u64, provider: AccountId) -> Result<(Balance, u16, Balance, u64), LendingError> {
+            let pool = self.liquidity_pools.get(pool_id).ok_or(LendingError::LoanNotFound)?;
+            
+            let provider_info = pool.liquidity_providers.iter()
+                .find(|p| p.account == provider)
+                .ok_or(LendingError::Unauthorized)?;
+            
+            Ok((
+                provider_info.liquidity_provided,
+                provider_info.pool_share,
+                provider_info.rewards_earned,
+                provider_info.last_reward_claim,
+            ))
         }
 
         // ============================================================================

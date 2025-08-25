@@ -179,6 +179,15 @@ calculate_remaining_grace_period(loan_id: u64) -> Result<u64, LendingError>
 set_custom_grace_period(loan_id: u64, grace_period_blocks: u64, max_extensions: u32) -> Result<(), LendingError>
 ```
 
+#### Liquidity Pool Management
+```rust
+create_liquidity_pool(name: String, initial_liquidity: Balance, pool_fee_rate: u16, reward_rate: u16, min_liquidity: Balance, max_liquidity: Balance) -> Result<u64, LendingError>
+provide_liquidity(pool_id: u64, amount: Balance) -> Result<(), LendingError>
+claim_pool_rewards(pool_id: u64) -> Result<Balance, LendingError>
+get_liquidity_pool_info(pool_id: u64) -> Result<(String, Balance, u32, Balance, u16, u16, PoolStatus), LendingError>
+get_liquidity_provider_info(pool_id: u64, provider: AccountId) -> Result<(Balance, u16, Balance, u64), LendingError>
+```
+
 #### Query Functions
 ```rust
 get_loan(loan_id: u64) -> Option<Loan>

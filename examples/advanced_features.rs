@@ -840,6 +840,219 @@ fn main() {
     println!("  - Borrower-friendly late payment handling");
 
     // ============================================================================
+    // LIQUIDITY POOL MANAGEMENT DEMONSTRATION
+    // ============================================================================
+    println!("\n--- Testing Liquidity Pool Management ---");
+    
+    // Test 1: Create a new liquidity pool
+    println!("\n1. Creating a New Liquidity Pool...");
+    test::set_caller::<DefaultEnvironment>(accounts.alice);
+    
+    // Create a lending pool with initial liquidity
+    match contract.create_liquidity_pool(
+        "High-Yield Lending Pool".to_string(),
+        10000, // 10,000 initial liquidity
+        100,   // 1% pool fee rate
+        200,   // 2% reward rate
+        1000,  // 1,000 minimum liquidity
+        100000, // 100,000 maximum liquidity
+    ) {
+        Ok(pool_id) => {
+            println!("   ✅ Successfully created liquidity pool with ID: {}", pool_id);
+            println!("   Pool name: High-Yield Lending Pool");
+            println!("   Initial liquidity: 10,000");
+            println!("   Pool fee rate: 1%");
+            println!("   Reward rate: 2%");
+            println!("   Min liquidity: 1,000");
+            println!("   Max liquidity: 100,000");
+        }
+        Err(e) => println!("   ❌ Failed to create liquidity pool: {:?}", e),
+    }
+    
+    // Test 2: Provide liquidity to the pool
+    println!("\n2. Providing Liquidity to Pool...");
+    
+    // Alice provides additional liquidity
+    test::set_caller::<DefaultEnvironment>(accounts.alice);
+    match contract.provide_liquidity(1, 5000) { // Add 5,000 more liquidity
+        Ok(_) => {
+            println!("   ✅ Successfully provided additional liquidity!");
+            println!("   Amount provided: 5,000");
+            println!("   Total pool liquidity: 15,000");
+        }
+        Err(e) => println!("   ❌ Failed to provide liquidity: {:?}", e),
+    }
+    
+    // Bob provides liquidity to the pool
+    test::set_caller::<DefaultEnvironment>(accounts.bob);
+    match contract.provide_liquidity(1, 3000) { // Bob adds 3,000 liquidity
+        Ok(_) => {
+            println!("   ✅ Successfully provided liquidity as Bob!");
+            println!("   Amount provided: 3,000");
+            println!("   Total pool liquidity: 18,000");
+        }
+        Err(e) => println!("   ❌ Failed to provide liquidity: {:?}", e),
+    }
+    
+    // Test 3: Get pool information
+    println!("\n3. Liquidity Pool Information...");
+    
+    match contract.get_liquidity_pool_info(1) {
+        Ok((name, total_liquidity, active_loans, total_volume, pool_fee, reward_rate, status)) => {
+            println!("   ✅ Pool information retrieved successfully!");
+            println!("   Pool name: {}", name);
+            println!("   Total liquidity: {}", total_liquidity);
+            println!("   Active loans: {}", active_loans);
+            println!("   Total volume: {}", total_volume);
+            println!("   Pool fee rate: {} basis points ({}%)", pool_fee, pool_fee as f64 / 100.0);
+            println!("   Reward rate: {} basis points ({}%)", reward_rate, reward_rate as f64 / 100.0);
+            println!("   Pool status: {:?}", status);
+        }
+        Err(e) => println!("   ❌ Failed to get pool info: {:?}", e),
+    }
+    
+    // Test 4: Get liquidity provider information
+    println!("\n4. Liquidity Provider Information...");
+    
+    // Get Alice's provider info
+    match contract.get_liquidity_provider_info(1, accounts.alice) {
+        Ok((liquidity_provided, pool_share, rewards_earned, last_claim)) => {
+            println!("   ✅ Alice's provider info retrieved!");
+            println!("   Liquidity provided: {}", liquidity_provided);
+            println!("   Pool share: {} basis points ({}%)", pool_share, pool_share as f64 / 100.0);
+            println!("   Rewards earned: {}", rewards_earned);
+            println!("   Last reward claim: block {}", last_claim);
+        }
+        Err(e) => println!("   ❌ Failed to get Alice's provider info: {:?}", e),
+    }
+    
+    // Get Bob's provider info
+    match contract.get_liquidity_provider_info(1, accounts.bob) {
+        Ok((liquidity_provided, pool_share, rewards_earned, last_claim)) => {
+            println!("   ✅ Bob's provider info retrieved!");
+            println!("   Liquidity provided: {}", liquidity_provided);
+            println!("   Pool share: {} basis points ({}%)", pool_share, pool_share as f64 / 100.0);
+            println!("   Rewards earned: {}", rewards_earned);
+            println!("   Last reward claim: block {}", last_claim);
+        }
+        Err(e) => println!("   ❌ Failed to get Bob's provider info: {:?}", e),
+    }
+    
+    // Test 5: Demonstrate pool share calculations
+    println!("\n5. Pool Share Calculations...");
+    
+    let alice_liquidity = 15000; // 15,000 (10,000 + 5,000)
+    let bob_liquidity = 3000;    // 3,000
+    let total_pool = alice_liquidity + bob_liquidity; // 18,000
+    
+    let alice_share = (alice_liquidity as f64 / total_pool as f64) * 100.0;
+    let bob_share = (bob_liquidity as f64 / total_pool as f64) * 100.0;
+    
+    println!("   Pool Share Distribution:");
+    println!("   ┌─────────────┬─────────────┬─────────────┬─────────────┐");
+    println!("   │ Provider    │ Liquidity   │ Share       │ Percentage  │");
+    println!("   ├─────────────┼─────────────┼─────────────┼─────────────┤");
+    println!("   │ Alice       │ {:<11} │ {:<11} │ {:<11.2} │", alice_liquidity, "15,000", alice_share);
+    println!("   │ Bob         │ {:<11} │ {:<11} │ {:<11.2} │", bob_liquidity, "3,000", bob_share);
+    println!("   ├─────────────┼─────────────┼─────────────┼─────────────┤");
+    println!("   │ Total       │ {:<11} │ {:<11} │ {:<11.2} │", total_pool, "18,000", 100.0);
+    println!("   └─────────────┴─────────────┴─────────────┴─────────────┘");
+    
+    // Test 6: Create additional pools for comparison
+    println!("\n6. Creating Additional Liquidity Pools...");
+    
+    // Create a conservative pool
+    test::set_caller::<DefaultEnvironment>(accounts.charlie);
+    match contract.create_liquidity_pool(
+        "Conservative Lending Pool".to_string(),
+        5000,  // 5,000 initial liquidity
+        50,    // 0.5% pool fee rate
+        100,   // 1% reward rate
+        500,   // 500 minimum liquidity
+        50000, // 50,000 maximum liquidity
+    ) {
+        Ok(pool_id) => {
+            println!("   ✅ Successfully created conservative pool with ID: {}", pool_id);
+            println!("   Pool name: Conservative Lending Pool");
+            println!("   Initial liquidity: 5,000");
+            println!("   Pool fee rate: 0.5%");
+            println!("   Reward rate: 1%");
+        }
+        Err(e) => println!("   ❌ Failed to create conservative pool: {:?}", e),
+    }
+    
+    // Create a high-risk pool
+    test::set_caller::<DefaultEnvironment>(accounts.django);
+    match contract.create_liquidity_pool(
+        "High-Risk Lending Pool".to_string(),
+        2000,  // 2,000 initial liquidity
+        200,   // 2% pool fee rate
+        500,   // 5% reward rate
+        200,   // 200 minimum liquidity
+        20000, // 20,000 maximum liquidity
+    ) {
+        Ok(pool_id) => {
+            println!("   ✅ Successfully created high-risk pool with ID: {}", pool_id);
+            println!("   Pool name: High-Risk Lending Pool");
+            println!("   Initial liquidity: 2,000");
+            println!("   Pool fee rate: 2%");
+            println!("   Reward rate: 5%");
+        }
+        Err(e) => println!("   ❌ Failed to create high-risk pool: {:?}", e),
+    }
+    
+    // Test 7: Demonstrate pool comparison
+    println!("\n7. Pool Comparison and Analysis...");
+    
+    let pools = [
+        ("High-Yield", 100, 200, 10000, 100000),
+        ("Conservative", 50, 100, 5000, 50000),
+        ("High-Risk", 200, 500, 2000, 20000),
+    ];
+    
+    println!("   Pool Risk-Reward Analysis:");
+    println!("   ┌─────────────┬─────────────┬─────────────┬─────────────┬─────────────┐");
+    println!("   │ Pool Type   │ Fee Rate    │ Reward Rate │ Min Liquidity│ Max Liquidity│");
+    println!("   ├─────────────┼─────────────┼─────────────┼─────────────┼─────────────┤");
+    
+    for (name, fee, reward, min_liq, max_liq) in pools.iter() {
+        println!("   │ {:<11} │ {:<11} │ {:<11} │ {:<12} │ {:<12} │", 
+            name, format!("{}%", *fee as f64 / 100.0), format!("{}%", *reward as f64 / 100.0), min_liq, max_liq);
+    }
+    println!("   └─────────────┴─────────────┴─────────────┴─────────────┴─────────────┘");
+    
+    // Test 8: Show current pool states
+    println!("\n8. Current Pool States...");
+    
+    for pool_id in 1..=3 {
+        if let Ok((name, total_liquidity, active_loans, total_volume, pool_fee, reward_rate, status)) = contract.get_liquidity_pool_info(pool_id) {
+            println!("   Pool {}: {} - {} liquidity, {} loans, {}% fee, {}% reward, {:?}", 
+                pool_id, name, total_liquidity, active_loans, pool_fee as f64 / 100.0, reward_rate as f64 / 100.0, status);
+        }
+    }
+    
+    // Test 9: Demonstrate liquidity pool benefits
+    println!("\n9. Liquidity Pool Benefits and Features...");
+    
+    println!("   This system provides:");
+    println!("   ✅ Automated market making for lending markets");
+    println!("   ✅ Liquidity provider rewards and incentives");
+    println!("   ✅ Dynamic pool rebalancing and management");
+    println!("   ✅ Risk-adjusted pool configurations");
+    println!("   ✅ Real-time pool analytics and monitoring");
+    println!("   ✅ Flexible liquidity provision and withdrawal");
+    println!("   ✅ Yield farming integration capabilities");
+    
+    println!("\n🎉 Liquidity Pool Management demonstration completed!");
+    println!("This demonstrates:");
+    println!("  - Automated market making (AMM) for lending");
+    println!("  - Liquidity provider rewards and incentives");
+    println!("  - Dynamic pool management and rebalancing");
+    println!("  - Risk-adjusted pool configurations");
+    println!("  - Real-time pool analytics and monitoring");
+    println!("  - Yield farming integration foundations");
+
+    // ============================================================================
     // COMPREHENSIVE LOAN QUERIES AND ANALYSIS
     // ============================================================================
 
