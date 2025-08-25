@@ -26,11 +26,11 @@
 - [x] **Grace period management** - Configurable grace periods for payments ✅
 
 ### **Phase 3: Liquidity & Pool Management (Medium Priority)**
-- [ ] **Liquidity pools for lenders** - Pool-based lending system
-- [ ] **Pool-based lending** - Automated loan matching
-- [ ] **Pool rewards distribution** - Incentivize liquidity providers
-- [ ] **Automated market maker (AMM)** - Dynamic interest rate discovery
-- [ ] **Yield farming integration** - DeFi yield opportunities
+- [x] **Automated market making** - Liquidity pools for lending markets ✅
+- [x] **Liquidity provider rewards** - Incentives for providing liquidity ✅
+- [ ] **Pool rebalancing** - Dynamic liquidity management
+- [ ] **Yield farming integration** - Additional rewards for active participation
+- [ ] **Market depth management** - Optimal liquidity distribution
 
 ### **Phase 4: Risk Management & Security (High Priority)**
 - [ ] **Collateral liquidation** - Automatic liquidation of undercollateralized loans
@@ -117,9 +117,11 @@
 - Compound interest calculation ✅
 - Interest-only payment periods ✅
 - Grace period management ✅
+- Automated market making ✅
+- Liquidity provider rewards ✅
 
 ### **Next Up**
-- Liquidity pool management features
+- Pool rebalancing and yield farming
 
 ## 📊 **Success Metrics**
 

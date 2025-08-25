@@ -58,6 +58,10 @@ pub struct Loan {
     pub max_grace_period_extensions: u32, // Maximum grace period extensions allowed
     pub grace_period_reason: GracePeriodReason, // Reason for grace period
     pub grace_period_history: Vec<GracePeriodRecord>, // History of grace period usage
+    pub liquidity_pool_id: Option<u64>, // Associated liquidity pool
+    pub pool_share: u16, // Share of the pool (basis points)
+    pub liquidity_provider: Option<AccountId>, // Who provided the liquidity
+    pub pool_rewards_earned: Balance, // Rewards earned from pool participation
 }
 
 #[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
@@ -182,6 +186,44 @@ pub struct GracePeriodRecord {
     pub duration: u64,            // Duration in blocks
     pub extension_number: u32,    // Which extension this was
     pub granted_by: AccountId,    // Who granted the grace period
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub struct LiquidityPool {
+    pub id: u64,
+    pub name: String,
+    pub total_liquidity: Balance,
+    pub active_loans: u32,
+    pub total_volume: Balance,
+    pub pool_fee_rate: u16, // Pool fee in basis points
+    pub reward_rate: u16,   // Reward rate in basis points
+    pub min_liquidity: Balance,
+    pub max_liquidity: Balance,
+    pub created_at: u64,
+    pub status: PoolStatus,
+    pub liquidity_providers: Vec<LiquidityProvider>,
+    pub total_rewards_distributed: Balance,
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub struct LiquidityProvider {
+    pub account: AccountId,
+    pub liquidity_provided: Balance,
+    pub pool_share: u16, // Share in basis points
+    pub rewards_earned: Balance,
+    pub joined_at: u64,
+    pub last_reward_claim: u64,
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub enum PoolStatus {
+    Active,
+    Paused,
+    Closed,
+    Emergency,
 }
 
 pub type AccountId = <ink_env::DefaultEnvironment as ink_env::Environment>::AccountId;
