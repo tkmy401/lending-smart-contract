@@ -188,6 +188,15 @@ get_liquidity_pool_info(pool_id: u64) -> Result<(String, Balance, u32, Balance, 
 get_liquidity_provider_info(pool_id: u64, provider: AccountId) -> Result<(Balance, u16, Balance, u64), LendingError>
 ```
 
+#### Pool Rebalancing & Dynamic Liquidity Management
+```rust
+rebalance_pool(pool_id: u64) -> Result<(), LendingError>
+set_auto_rebalancing(pool_id: u64, enabled: bool) -> Result<(), LendingError>
+set_rebalancing_parameters(pool_id: u64, frequency: u64, target_ratio: u16, threshold: u16) -> Result<(), LendingError>
+needs_rebalancing(pool_id: u64) -> Result<bool, LendingError>
+get_pool_rebalancing_info(pool_id: u64) -> Result<(u16, u64, u64, u16, u16, bool), LendingError>
+```
+
 #### Query Functions
 ```rust
 get_loan(loan_id: u64) -> Option<Loan>

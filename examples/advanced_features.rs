@@ -1053,6 +1053,171 @@ fn main() {
     println!("  - Yield farming integration foundations");
 
     // ============================================================================
+    // POOL REBALANCING & DYNAMIC LIQUIDITY MANAGEMENT DEMONSTRATION
+    // ============================================================================
+    println!("\n--- Testing Pool Rebalancing & Dynamic Liquidity Management ---");
+    
+    // Test 1: Check current pool rebalancing status
+    println!("\n1. Current Pool Rebalancing Status...");
+    
+    for pool_id in 1..=3 {
+        match contract.get_pool_rebalancing_info(pool_id) {
+            Ok((performance_score, last_rebalance, frequency, target_ratio, current_ratio, auto_enabled)) => {
+                println!("   Pool {}: Performance: {}%, Last rebalance: block {}, Frequency: {} blocks", 
+                    pool_id, performance_score as f64 / 100.0, last_rebalance, frequency);
+                println!("     Target ratio: {}%, Current ratio: {}%, Auto-rebalancing: {}", 
+                    target_ratio as f64 / 100.0, current_ratio as f64 / 100.0, auto_enabled);
+            }
+            Err(e) => println!("   ❌ Failed to get pool {} rebalancing info: {:?}", pool_id, e),
+        }
+    }
+    
+    // Test 2: Check if pools need rebalancing
+    println!("\n2. Checking Pool Rebalancing Needs...");
+    
+    for pool_id in 1..=3 {
+        match contract.needs_rebalancing(pool_id) {
+            Ok(needs_rebalance) => {
+                println!("   Pool {}: Needs rebalancing: {}", pool_id, needs_rebalance);
+            }
+            Err(e) => println!("   ❌ Failed to check pool {} rebalancing needs: {:?}", pool_id, e),
+        }
+    }
+    
+    // Test 3: Set custom rebalancing parameters
+    println!("\n3. Setting Custom Rebalancing Parameters...");
+    test::set_caller::<DefaultEnvironment>(accounts.alice); // Pool 1 creator
+    
+    // Set more aggressive rebalancing for high-yield pool
+    match contract.set_rebalancing_parameters(1, 7200, 7500, 300) { // 12h frequency, 75% target, 3% threshold
+        Ok(_) => {
+            println!("   ✅ Successfully set custom rebalancing parameters for Pool 1!");
+            println!("   New frequency: 7200 blocks (12 hours)");
+            println!("   New target ratio: 75%");
+            println!("   New threshold: 3%");
+        }
+        Err(e) => println!("   ❌ Failed to set rebalancing parameters: {:?}", e),
+    }
+    
+    // Test 4: Disable auto-rebalancing for conservative pool
+    println!("\n4. Managing Auto-Rebalancing Settings...");
+    test::set_caller::<DefaultEnvironment>(accounts.charlie); // Pool 2 creator
+    
+    match contract.set_auto_rebalancing(2, false) {
+        Ok(_) => {
+            println!("   ✅ Successfully disabled auto-rebalancing for Pool 2!");
+            println!("   Pool 2 will now require manual rebalancing");
+        }
+        Err(e) => println!("   ❌ Failed to disable auto-rebalancing: {:?}", e),
+    }
+    
+    // Test 5: Manual pool rebalancing
+    println!("\n5. Manual Pool Rebalancing...");
+    test::set_caller::<DefaultEnvironment>(accounts.alice); // Pool 1 creator
+    
+    // Check if pool needs rebalancing
+    match contract.needs_rebalancing(1) {
+        Ok(needs_rebalance) => {
+            if needs_rebalance {
+                println!("   Pool 1 needs rebalancing, triggering manual rebalance...");
+                match contract.rebalance_pool(1) {
+                    Ok(_) => {
+                        println!("   ✅ Successfully rebalanced Pool 1!");
+                        
+                        // Get updated rebalancing info
+                        match contract.get_pool_rebalancing_info(1) {
+                            Ok((performance_score, last_rebalance, frequency, target_ratio, current_ratio, auto_enabled)) => {
+                                println!("   Updated Pool 1:");
+                                println!("     Performance score: {}%", performance_score as f64 / 100.0);
+                                println!("     Last rebalance: block {}", last_rebalance);
+                                println!("     Current ratio: {}% (target: {}%)", 
+                                    current_ratio as f64 / 100.0, target_ratio as f64 / 100.0);
+                            }
+                            Err(e) => println!("   ❌ Failed to get updated info: {:?}", e),
+                        }
+                    }
+                    Err(e) => println!("   ❌ Failed to rebalance pool: {:?}", e),
+                }
+            } else {
+                println!("   Pool 1 doesn't need rebalancing yet");
+            }
+        }
+        Err(e) => println!("   ❌ Failed to check rebalancing needs: {:?}", e),
+    }
+    
+    // Test 6: Demonstrate performance score calculation
+    println!("\n6. Performance Score Calculation Demonstration...");
+    
+    // Create a new pool with specific characteristics for testing
+    test::set_caller::<DefaultEnvironment>(accounts.eve);
+    let test_pool_id = contract.create_liquidity_pool(
+        "Performance Test Pool".to_string(),
+        1000,  // 1,000 initial liquidity
+        150,   // 1.5% pool fee rate
+        300,   // 3% reward rate
+        100,   // 100 minimum liquidity
+        10000, // 10,000 maximum liquidity
+    ).unwrap();
+    
+    println!("   Created test pool with ID: {}", test_pool_id);
+    
+    // Get initial performance score
+    match contract.get_pool_rebalancing_info(test_pool_id) {
+        Ok((performance_score, last_rebalance, frequency, target_ratio, current_ratio, auto_enabled)) => {
+            println!("   Initial performance score: {}%", performance_score as f64 / 100.0);
+            println!("   Base score: 50% (default)");
+            println!("   Liquidity utilization: 0% (no active loans)");
+            println!("   Reward efficiency: 0% (no rewards distributed)");
+            println!("   Provider diversity: 100 points (1 provider)");
+            println!("   Total calculated score: {}%", performance_score as f64 / 100.0);
+        }
+        Err(e) => println!("   ❌ Failed to get test pool info: {:?}", e),
+    }
+    
+    // Test 7: Show rebalancing parameter comparison
+    println!("\n7. Rebalancing Parameter Comparison...");
+    
+    let rebalancing_configs = [
+        ("High-Yield", 7200, 7500, 300, "Aggressive"),
+        ("Conservative", 14400, 8000, 500, "Moderate"),
+        ("High-Risk", 3600, 6000, 200, "Very Aggressive"),
+    ];
+    
+    println!("   Pool Rebalancing Strategies:");
+    println!("   ┌─────────────┬─────────────┬─────────────┬─────────────┬─────────────────┐");
+    println!("   │ Pool Type   │ Frequency   │ Target Ratio│ Threshold  │ Strategy        │");
+    println!("   ├─────────────┼─────────────┼─────────────┼─────────────┼─────────────────┤");
+    
+    for (name, freq, target, threshold, strategy) in rebalancing_configs.iter() {
+        let freq_hours = freq / 600; // Convert blocks to hours
+        println!("   │ {:<11} │ {:<11} │ {:<11} │ {:<11} │ {:<15} │", 
+            name, format!("{}h", freq_hours), format!("{}%", *target as f64 / 100.0), 
+            format!("{}%", *threshold as f64 / 100.0), strategy);
+    }
+    println!("   └─────────────┴─────────────┴─────────────┴─────────────┴─────────────────┘");
+    
+    // Test 8: Demonstrate rebalancing benefits
+    println!("\n8. Pool Rebalancing Benefits and Features...");
+    
+    println!("   This system provides:");
+    println!("   ✅ Automatic performance-based pool optimization");
+    println!("   ✅ Dynamic liquidity ratio adjustments");
+    println!("   ✅ Configurable rebalancing strategies");
+    println!("   ✅ Performance score calculation and monitoring");
+    println!("   ✅ Manual and automatic rebalancing options");
+    println!("   ✅ Real-time pool health monitoring");
+    println!("   ✅ Optimal liquidity distribution management");
+    
+    println!("\n🎉 Pool Rebalancing & Dynamic Liquidity Management demonstration completed!");
+    println!("This demonstrates:");
+    println!("  - Performance-based pool optimization");
+    println!("  - Dynamic liquidity ratio management");
+    println!("  - Configurable rebalancing strategies");
+    println!("  - Real-time performance monitoring");
+    println!("  - Manual and automatic rebalancing");
+    println!("  - Pool health and efficiency management");
+
+    // ============================================================================
     // COMPREHENSIVE LOAN QUERIES AND ANALYSIS
     // ============================================================================
 
