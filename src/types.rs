@@ -204,6 +204,13 @@ pub struct LiquidityPool {
     pub status: PoolStatus,
     pub liquidity_providers: Vec<LiquidityProvider>,
     pub total_rewards_distributed: Balance,
+    pub performance_score: u16, // Pool performance score (0-10000)
+    pub last_rebalance: u64, // Block number of last rebalance
+    pub rebalance_frequency: u64, // How often to rebalance (blocks)
+    pub target_liquidity_ratio: u16, // Target liquidity ratio (basis points)
+    pub current_liquidity_ratio: u16, // Current liquidity ratio (basis points)
+    pub rebalance_threshold: u16, // Threshold for triggering rebalance
+    pub auto_rebalance_enabled: bool, // Whether auto-rebalancing is enabled
 }
 
 #[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]

@@ -214,6 +214,17 @@ pub mod lending_contract {
         total_rewards: Balance,
     }
 
+    #[ink(event)]
+    pub struct PoolRebalanced {
+        #[ink(topic)]
+        pool_id: u64,
+        old_liquidity_ratio: u16,
+        new_liquidity_ratio: u16,
+        performance_score: u16,
+        rebalance_reason: String,
+        liquidity_adjustment: Balance,
+    }
+
     impl LendingContract {
         // ============================================================================
         // CONSTRUCTOR
@@ -1594,6 +1605,13 @@ pub mod lending_contract {
                 status: PoolStatus::Active,
                 liquidity_providers: Vec::new(),
                 total_rewards_distributed: 0,
+                performance_score: 5000, // Default: 50% performance score
+                last_rebalance: current_block,
+                rebalance_frequency: 14400, // Default: daily rebalancing (14400 blocks)
+                target_liquidity_ratio: 8000, // Default: 80% target liquidity ratio
+                current_liquidity_ratio: 10000, // Initial: 100% current ratio
+                rebalance_threshold: 500, // Default: 5% threshold for rebalancing
+                auto_rebalance_enabled: true, // Default: auto-rebalancing enabled
             };
             
             // Add creator as first liquidity provider
@@ -1962,6 +1980,201 @@ pub mod lending_contract {
                 // Repaying in last 25% of loan duration: 1% discount
                 _ => 100, // 1%
             }
+        }
+
+        // ============================================================================
+        // POOL REBALANCING & DYNAMIC LIQUIDITY MANAGEMENT
+        // ============================================================================
+        
+        /// Trigger manual pool rebalancing
+        #[ink(message)]
+        pub fn rebalance_pool(&mut self, pool_id: u64) -> Result<(), LendingError> {
+            let caller = self.env().caller();
+            let mut pool = self.liquidity_pools.get(pool_id).ok_or(LendingError::LoanNotFound)?;
+            
+            // Only pool creator or authorized users can rebalance
+            if pool.liquidity_providers.is_empty() || pool.liquidity_providers[0].account != caller {
+                return Err(LendingError::Unauthorized);
+            }
+            
+            // Check if pool is active
+            if pool.status != PoolStatus::Active {
+                return Err(LendingError::LoanNotActive);
+            }
+            
+            // Check rebalance frequency
+            let current_block = self.env().block_number() as u64;
+            if current_block < pool.last_rebalance + pool.rebalance_frequency {
+                return Err(LendingError::InvalidAmount); // Reuse error for too frequent rebalancing
+            }
+            
+            // Perform rebalancing
+            let old_ratio = pool.current_liquidity_ratio;
+            let (new_ratio, reason, adjustment) = self.calculate_rebalance_parameters(&pool)?;
+            
+            // Update pool state
+            pool.current_liquidity_ratio = new_ratio;
+            pool.last_rebalance = current_block;
+            pool.performance_score = self.calculate_performance_score(&pool)?;
+            
+            self.liquidity_pools.insert(pool_id, &pool);
+            
+            self.env().emit_event(PoolRebalanced {
+                pool_id,
+                old_liquidity_ratio: old_ratio,
+                new_liquidity_ratio: new_ratio,
+                performance_score: pool.performance_score,
+                rebalance_reason: reason,
+                liquidity_adjustment: adjustment,
+            });
+            
+            Ok(())
+        }
+        
+        /// Enable or disable auto-rebalancing for a pool
+        #[ink(message)]
+        pub fn set_auto_rebalancing(&mut self, pool_id: u64, enabled: bool) -> Result<(), LendingError> {
+            let caller = self.env().caller();
+            let mut pool = self.liquidity_pools.get(pool_id).ok_or(LendingError::LoanNotFound)?;
+            
+            // Only pool creator can change auto-rebalancing settings
+            if pool.liquidity_providers.is_empty() || pool.liquidity_providers[0].account != caller {
+                return Err(LendingError::Unauthorized);
+            }
+            
+            pool.auto_rebalance_enabled = enabled;
+            self.liquidity_pools.insert(pool_id, &pool);
+            
+            Ok(())
+        }
+        
+        /// Set rebalancing parameters for a pool
+        #[ink(message)]
+        pub fn set_rebalancing_parameters(
+            &mut self,
+            pool_id: u64,
+            frequency: u64,
+            target_ratio: u16,
+            threshold: u16,
+        ) -> Result<(), LendingError> {
+            let caller = self.env().caller();
+            let mut pool = self.liquidity_pools.get(pool_id).ok_or(LendingError::LoanNotFound)?;
+            
+            // Only pool creator can change rebalancing parameters
+            if pool.liquidity_providers.is_empty() || pool.liquidity_providers[0].account != caller {
+                return Err(LendingError::Unauthorized);
+            }
+            
+            // Validate parameters
+            if frequency < 14400 || target_ratio > 10000 || threshold > 1000 {
+                return Err(LendingError::InvalidAmount);
+            }
+            
+            pool.rebalance_frequency = frequency;
+            pool.target_liquidity_ratio = target_ratio;
+            pool.rebalance_threshold = threshold;
+            
+            self.liquidity_pools.insert(pool_id, &pool);
+            
+            Ok(())
+        }
+        
+        /// Check if pool needs rebalancing
+        #[ink(message)]
+        pub fn needs_rebalancing(&self, pool_id: u64) -> Result<bool, LendingError> {
+            let pool = self.liquidity_pools.get(pool_id).ok_or(LendingError::LoanNotFound)?;
+            
+            if !pool.auto_rebalance_enabled {
+                return Ok(false);
+            }
+            
+            let current_block = self.env().block_number() as u64;
+            if current_block < pool.last_rebalance + pool.rebalance_frequency {
+                return Ok(false);
+            }
+            
+            let ratio_difference = if pool.current_liquidity_ratio > pool.target_liquidity_ratio {
+                pool.current_liquidity_ratio - pool.target_liquidity_ratio
+            } else {
+                pool.target_liquidity_ratio - pool.current_liquidity_ratio
+            };
+            
+            Ok(ratio_difference >= pool.rebalance_threshold)
+        }
+        
+        /// Get pool rebalancing information
+        #[ink(message)]
+        pub fn get_pool_rebalancing_info(&self, pool_id: u64) -> Result<(u16, u64, u64, u16, u16, bool), LendingError> {
+            let pool = self.liquidity_pools.get(pool_id).ok_or(LendingError::LoanNotFound)?;
+            Ok((
+                pool.performance_score,
+                pool.last_rebalance,
+                pool.rebalance_frequency,
+                pool.target_liquidity_ratio,
+                pool.current_liquidity_ratio,
+                pool.auto_rebalance_enabled,
+            ))
+        }
+        
+        /// Calculate rebalancing parameters
+        fn calculate_rebalance_parameters(&self, pool: &LiquidityPool) -> Result<(u16, String, Balance), LendingError> {
+            let current_ratio = pool.current_liquidity_ratio;
+            let target_ratio = pool.target_liquidity_ratio;
+            
+            // Calculate new ratio based on performance
+            let performance_factor = pool.performance_score as f64 / 10000.0;
+            let ratio_adjustment = ((target_ratio as i32 - current_ratio as i32) as f64 * performance_factor) as i32;
+            let new_ratio = (current_ratio as i32 + ratio_adjustment).max(1000).min(10000) as u16;
+            
+            // Determine rebalance reason
+            let reason = if new_ratio > current_ratio {
+                "Performance improvement - increasing liquidity ratio".to_string()
+            } else if new_ratio < current_ratio {
+                "Performance decline - decreasing liquidity ratio".to_string()
+            } else {
+                "No adjustment needed".to_string()
+            };
+            
+            // Calculate liquidity adjustment
+            let adjustment = if new_ratio != current_ratio {
+                let adjustment_factor = (new_ratio as f64 - current_ratio as f64) / 10000.0;
+                (pool.total_liquidity as f64 * adjustment_factor) as u128
+            } else {
+                0
+            };
+            
+            Ok((new_ratio, reason, adjustment))
+        }
+        
+        /// Calculate pool performance score
+        fn calculate_performance_score(&self, pool: &LiquidityPool) -> Result<u16, LendingError> {
+            // Simple performance calculation based on multiple factors
+            let mut score = 5000u32; // Base score: 50%
+            
+            // Factor 1: Liquidity utilization (0-2000 points)
+            let utilization = if pool.total_liquidity > 0 {
+                (pool.active_loans as f64 / pool.total_liquidity as f64) * 2000.0
+            } else {
+                0.0
+            };
+            score += utilization as u32;
+            
+            // Factor 2: Reward distribution efficiency (0-2000 points)
+            let reward_efficiency = if pool.total_liquidity > 0 {
+                (pool.total_rewards_distributed as f64 / pool.total_liquidity as f64) * 2000.0
+            } else {
+                0.0
+            };
+            score += reward_efficiency as u32;
+            
+            // Factor 3: Provider diversity (0-1000 points)
+            let provider_diversity = (pool.liquidity_providers.len() as u32).min(10) * 100;
+            score += provider_diversity;
+            
+            // Ensure score is within bounds
+            score = score.min(10000);
+            
+            Ok(score as u16)
         }
     }
 } 
