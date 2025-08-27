@@ -197,6 +197,15 @@ needs_rebalancing(pool_id: u64) -> Result<bool, LendingError>
 get_pool_rebalancing_info(pool_id: u64) -> Result<(u16, u64, u64, u16, u16, bool), LendingError>
 ```
 
+#### Yield Farming & Advanced Rewards
+```rust
+enable_yield_farming(pool_id: u64, reward_tokens: Vec<RewardToken>) -> Result<(), LendingError>
+stake_tokens(pool_id: u64, amount: Balance) -> Result<(), LendingError>
+claim_yield_rewards(pool_id: u64) -> Result<Balance, LendingError>
+get_yield_farming_info(pool_id: u64) -> Result<(bool, u32, Balance, u32), LendingError>
+get_staking_tiers(pool_id: u64) -> Result<Vec<(String, Balance, u16, u16)>, LendingError>
+```
+
 #### Query Functions
 ```rust
 get_loan(loan_id: u64) -> Option<Loan>

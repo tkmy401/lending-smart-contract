@@ -1025,7 +1025,7 @@ fn main() {
     println!("\n8. Current Pool States...");
     
     for pool_id in 1..=3 {
-        if let Ok((name, total_liquidity, active_loans, total_volume, pool_fee, reward_rate, status)) = contract.get_liquidity_pool_info(pool_id) {
+        if let Ok((name, total_liquidity, active_loans, _total_volume, pool_fee, reward_rate, status)) = contract.get_liquidity_pool_info(pool_id) {
             println!("   Pool {}: {} - {} liquidity, {} loans, {}% fee, {}% reward, {:?}", 
                 pool_id, name, total_liquidity, active_loans, pool_fee as f64 / 100.0, reward_rate as f64 / 100.0, status);
         }
@@ -1062,11 +1062,11 @@ fn main() {
     
     for pool_id in 1..=3 {
         match contract.get_pool_rebalancing_info(pool_id) {
-            Ok((performance_score, last_rebalance, frequency, target_ratio, current_ratio, auto_enabled)) => {
+            Ok((performance_score, last_rebalance, _frequency, target_ratio, current_ratio, _auto_enabled)) => {
                 println!("   Pool {}: Performance: {}%, Last rebalance: block {}, Frequency: {} blocks", 
-                    pool_id, performance_score as f64 / 100.0, last_rebalance, frequency);
+                    pool_id, performance_score as f64 / 100.0, last_rebalance, _frequency);
                 println!("     Target ratio: {}%, Current ratio: {}%, Auto-rebalancing: {}", 
-                    target_ratio as f64 / 100.0, current_ratio as f64 / 100.0, auto_enabled);
+                    target_ratio as f64 / 100.0, current_ratio as f64 / 100.0, _auto_enabled);
             }
             Err(e) => println!("   ❌ Failed to get pool {} rebalancing info: {:?}", pool_id, e),
         }
@@ -1126,12 +1126,12 @@ fn main() {
                         
                         // Get updated rebalancing info
                         match contract.get_pool_rebalancing_info(1) {
-                            Ok((performance_score, last_rebalance, frequency, target_ratio, current_ratio, auto_enabled)) => {
-                                println!("   Updated Pool 1:");
-                                println!("     Performance score: {}%", performance_score as f64 / 100.0);
-                                println!("     Last rebalance: block {}", last_rebalance);
-                                println!("     Current ratio: {}% (target: {}%)", 
-                                    current_ratio as f64 / 100.0, target_ratio as f64 / 100.0);
+                                    Ok((performance_score, _last_rebalance, _frequency, _target_ratio, _current_ratio, _auto_enabled)) => {
+            println!("   Updated Pool 1:");
+            println!("   Performance score: {}%", performance_score as f64 / 100.0);
+            println!("   Last rebalance: block {}", _last_rebalance);
+            println!("   Current ratio: {}% (target: {}%)", 
+                _current_ratio as f64 / 100.0, _target_ratio as f64 / 100.0);
                             }
                             Err(e) => println!("   ❌ Failed to get updated info: {:?}", e),
                         }
@@ -1216,6 +1216,194 @@ fn main() {
     println!("  - Real-time performance monitoring");
     println!("  - Manual and automatic rebalancing");
     println!("  - Pool health and efficiency management");
+
+    // ============================================================================
+    // YIELD FARMING & ADVANCED REWARDS DEMONSTRATION
+    // ============================================================================
+    println!("\n--- Testing Yield Farming & Advanced Rewards ---");
+    
+    // Test 1: Check current yield farming status
+    println!("\n1. Current Yield Farming Status...");
+    
+    for pool_id in 1..=4 {
+        match contract.get_yield_farming_info(pool_id) {
+            Ok((enabled, reward_tokens, total_staked, tier_count)) => {
+                println!("   Pool {}: Yield farming: {}, Reward tokens: {}, Total staked: {}, Tiers: {}", 
+                    pool_id, enabled, reward_tokens, total_staked, tier_count);
+            }
+            Err(e) => println!("   ❌ Failed to get pool {} yield farming info: {:?}", pool_id, e),
+        }
+    }
+    
+    // Test 2: Enable yield farming for Pool 1
+    println!("\n2. Enabling Yield Farming for Pool 1...");
+    test::set_caller::<DefaultEnvironment>(accounts.alice); // Pool 1 creator
+    
+    // Create reward tokens
+    let reward_tokens = vec![
+        lending_smart_contract::types::RewardToken {
+            token_address: accounts.alice,
+            symbol: "LEND".to_string(),
+            decimals: 18,
+            reward_rate: 150, // 1.5% reward rate
+            total_distributed: 0,
+            is_active: true,
+        },
+        lending_smart_contract::types::RewardToken {
+            token_address: accounts.bob,
+            symbol: "GOV".to_string(),
+            decimals: 18,
+            reward_rate: 100, // 1% reward rate
+            total_distributed: 0,
+            is_active: true,
+        },
+    ];
+    
+    match contract.enable_yield_farming(1, reward_tokens) {
+        Ok(_) => {
+            println!("   ✅ Successfully enabled yield farming for Pool 1!");
+            println!("   Reward tokens: LEND (1.5%) and GOV (1%)");
+            println!("   Staking requirements: Min 1,000, Lock 1 day, Max 100,000");
+        }
+        Err(e) => println!("   ❌ Failed to enable yield farming: {:?}", e),
+    }
+    
+    // Test 3: Display staking tiers
+    println!("\n3. Staking Tiers and Multipliers...");
+    
+    match contract.get_staking_tiers(1) {
+        Ok(tiers) => {
+            println!("   Pool 1 Staking Tiers:");
+            println!("   ┌─────────────┬─────────────┬─────────────┬─────────────────┐");
+            println!("   │ Tier        │ Min Stake   │ Multiplier  │ Bonus Rewards   │");
+            println!("   ├─────────────┼─────────────┼─────────────┼─────────────────┤");
+            
+            for (tier_name, min_stake, multiplier, bonus) in tiers {
+                println!("   │ {:<11} │ {:<11} │ {:<11} │ {:<15} │", 
+                    tier_name, min_stake, format!("{}x", multiplier as f64 / 1000.0), bonus);
+            }
+            println!("   └─────────────┴─────────────┴─────────────┴─────────────────┘");
+            
+            println!("   Multiplier Explanation:");
+            println!("   - Bronze (1x): Base rewards, no bonus");
+            println!("   - Silver (1.2x): 20% more rewards + 1% bonus");
+            println!("   - Gold (1.5x): 50% more rewards + 3% bonus");
+            println!("   - Platinum (2x): Double rewards + 5% bonus");
+        }
+        Err(e) => println!("   ❌ Failed to get staking tiers: {:?}", e),
+        }
+    
+    // Test 4: Stake tokens for yield farming
+    println!("\n4. Staking Tokens for Yield Farming...");
+    
+    // Alice stakes tokens (Pool creator)
+    test::set_caller::<DefaultEnvironment>(accounts.alice);
+    match contract.stake_tokens(1, 25000) { // Stake 25,000 tokens
+        Ok(_) => {
+            println!("   ✅ Successfully staked 25,000 tokens as Alice!");
+            println!("   Tier: Gold (1.5x multiplier)");
+            println!("   Lock period: 1 day (14,400 blocks)");
+            println!("   Early unstake penalty: 5%");
+        }
+        Err(e) => println!("   ❌ Failed to stake tokens: {:?}", e),
+    }
+    
+    // Bob stakes tokens
+    test::set_caller::<DefaultEnvironment>(accounts.bob);
+    match contract.stake_tokens(1, 8000) { // Stake 8,000 tokens
+        Ok(_) => {
+            println!("   ✅ Successfully staked 8,000 tokens as Bob!");
+            println!("   Tier: Silver (1.2x multiplier)");
+            println!("   Lock period: 1 day (14,400 blocks)");
+            println!("   Early unstake penalty: 5%");
+        }
+        Err(e) => println!("   ❌ Failed to stake tokens: {:?}", e),
+    }
+    
+    // Charlie stakes tokens
+    test::set_caller::<DefaultEnvironment>(accounts.charlie);
+    match contract.stake_tokens(1, 1500) { // Stake 1,500 tokens
+        Ok(_) => {
+            println!("   ✅ Successfully staked 1,500 tokens as Charlie!");
+            println!("   Tier: Bronze (1x multiplier)");
+            println!("   Lock period: 1 day (14,400 blocks)");
+            println!("   Early unstake penalty: 5%");
+        }
+        Err(e) => println!("   ❌ Failed to stake tokens: {:?}", e),
+        }
+    
+    // Test 5: Claim yield farming rewards
+    println!("\n5. Claiming Yield Farming Rewards...");
+    
+    // Alice claims rewards
+    test::set_caller::<DefaultEnvironment>(accounts.alice);
+    match contract.claim_yield_rewards(1) {
+        Ok(rewards) => {
+            println!("   ✅ Successfully claimed yield rewards as Alice!");
+            println!("   Reward amount: {} LEND tokens", rewards);
+            println!("   Tier multiplier: 1.5x (Gold tier)");
+            println!("   Base reward rate: 1% per block");
+            println!("   Total rewards earned: {} LEND", rewards);
+        }
+        Err(e) => println!("   ❌ Failed to claim rewards: {:?}", e),
+    }
+    
+    // Test 6: Demonstrate yield farming benefits
+    println!("\n6. Yield Farming Benefits and Calculations...");
+    
+    let staking_scenarios = [
+        ("Alice", 25000, "Gold", 1500, 1.5),
+        ("Bob", 8000, "Silver", 1200, 1.2),
+        ("Charlie", 1500, "Bronze", 1000, 1.0),
+    ];
+    
+    println!("   Yield Farming Reward Calculations:");
+    println!("   ┌─────────────┬─────────────┬─────────────┬─────────────┬─────────────────┐");
+    println!("   │ Staker      │ Staked      │ Tier        │ Multiplier  │ Effective Rate  │");
+    println!("   ├─────────────┼─────────────┼─────────────┼─────────────┼─────────────────┤");
+    
+    for (name, staked, tier, _multiplier, effective_rate) in staking_scenarios.iter() {
+        let base_rate = 1.0; // 1% base rate
+        let effective = base_rate * effective_rate;
+        println!("   │ {:<11} │ {:<11} │ {:<11} │ {:<11} │ {:<15} │", 
+            name, staked, tier, format!("{}x", effective_rate), format!("{:.1}%", effective));
+    }
+    println!("   └─────────────┴─────────────┴─────────────┴─────────────┴─────────────────┘");
+    
+    // Test 7: Show updated pool information
+    println!("\n7. Updated Pool Information with Yield Farming...");
+    
+    match contract.get_yield_farming_info(1) {
+        Ok((enabled, reward_tokens, total_staked, tier_count)) => {
+            println!("   Pool 1 Yield Farming Status:");
+            println!("   ✅ Yield farming enabled: {}", enabled);
+            println!("   ✅ Reward tokens supported: {}", reward_tokens);
+            println!("   ✅ Total tokens staked: {}", total_staked);
+            println!("   ✅ Staking tiers available: {}", tier_count);
+        }
+        Err(e) => println!("   ❌ Failed to get updated yield farming info: {:?}", e),
+    }
+    
+    // Test 8: Demonstrate advanced yield farming features
+    println!("\n8. Advanced Yield Farming Features...");
+    
+    println!("   This system provides:");
+    println!("   ✅ Multi-token reward systems (LEND, GOV, etc.)");
+    println!("   ✅ Tiered staking with multipliers (1x to 2x)");
+    println!("   ✅ Time-based lock periods with penalties");
+    println!("   ✅ Performance-based reward calculations");
+    println!("   ✅ Cross-pool reward opportunities");
+    println!("   ✅ Governance token integration");
+    println!("   ✅ Flexible staking requirements");
+    
+    println!("\n🎉 Yield Farming & Advanced Rewards demonstration completed!");
+    println!("This demonstrates:");
+    println!("  - Multi-token reward systems");
+    println!("  - Tiered staking with multipliers");
+    println!("  - Time-based lock periods");
+    println!("  - Performance-based rewards");
+    println!("  - Cross-pool opportunities");
+    println!("  - Governance token integration");
 
     // ============================================================================
     // COMPREHENSIVE LOAN QUERIES AND ANALYSIS

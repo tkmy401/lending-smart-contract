@@ -4,7 +4,7 @@ use ink_prelude::vec::Vec;
 use crate::types::{
     Loan, LoanStatus, UserProfile, PartialPayment, PaymentType, RefinanceRecord,
     InterestRateType, InterestRateAdjustment, RateAdjustmentReason, InterestType, CompoundFrequency, PaymentStructure,
-    GracePeriodReason, GracePeriodRecord, LiquidityPool, PoolStatus, LiquidityProvider
+    GracePeriodReason, GracePeriodRecord, LiquidityPool, PoolStatus, LiquidityProvider, RewardToken, StakingRequirements, TierMultiplier, StakingPosition
 };
 use crate::errors::LendingError;
 
@@ -223,6 +223,37 @@ pub mod lending_contract {
         performance_score: u16,
         rebalance_reason: String,
         liquidity_adjustment: Balance,
+    }
+
+    #[ink(event)]
+    pub struct YieldFarmingEnabled {
+        #[ink(topic)]
+        pool_id: u64,
+        enabled_by: AccountId,
+        reward_tokens_count: u32,
+        staking_requirements: String,
+    }
+
+    #[ink(event)]
+    pub struct TokensStaked {
+        #[ink(topic)]
+        pool_id: u64,
+        staker: AccountId,
+        amount: Balance,
+        tier_level: String,
+        multiplier: u16,
+        lock_period: u64,
+    }
+
+    #[ink(event)]
+    pub struct YieldRewardsClaimed {
+        #[ink(topic)]
+        pool_id: u64,
+        staker: AccountId,
+        reward_amount: Balance,
+        reward_token: String,
+        tier_multiplier: u16,
+        total_staked: Balance,
     }
 
     impl LendingContract {
@@ -1612,6 +1643,41 @@ pub mod lending_contract {
                 current_liquidity_ratio: 10000, // Initial: 100% current ratio
                 rebalance_threshold: 500, // Default: 5% threshold for rebalancing
                 auto_rebalance_enabled: true, // Default: auto-rebalancing enabled
+                yield_farming_enabled: false, // Default: yield farming disabled
+                reward_tokens: Vec::new(), // No reward tokens initially
+                staking_requirements: StakingRequirements {
+                    min_stake_amount: 1000, // Minimum 1000 tokens to stake
+                    lock_period: 14400, // 1 day lock period
+                    early_unstake_penalty: 500, // 5% penalty for early unstaking
+                    max_stake_amount: 100000, // Maximum 100,000 tokens to stake
+                },
+                tier_multipliers: vec![
+                    TierMultiplier {
+                        tier_name: "Bronze".to_string(),
+                        min_stake_amount: 1000,
+                        multiplier: 1000, // 1x multiplier
+                        bonus_rewards: 0,
+                    },
+                    TierMultiplier {
+                        tier_name: "Silver".to_string(),
+                        min_stake_amount: 5000,
+                        multiplier: 1200, // 1.2x multiplier
+                        bonus_rewards: 100,
+                    },
+                    TierMultiplier {
+                        tier_name: "Gold".to_string(),
+                        min_stake_amount: 20000,
+                        multiplier: 1500, // 1.5x multiplier
+                        bonus_rewards: 300,
+                    },
+                    TierMultiplier {
+                        tier_name: "Platinum".to_string(),
+                        min_stake_amount: 50000,
+                        multiplier: 2000, // 2x multiplier
+                        bonus_rewards: 500,
+                    },
+                ],
+                total_staked_tokens: 0,
             };
             
             // Add creator as first liquidity provider
@@ -2175,6 +2241,194 @@ pub mod lending_contract {
             score = score.min(10000);
             
             Ok(score as u16)
+        }
+
+        // ============================================================================
+        // YIELD FARMING & ADVANCED REWARDS
+        // ============================================================================
+        
+        /// Enable yield farming for a pool
+        #[ink(message)]
+        pub fn enable_yield_farming(
+            &mut self,
+            pool_id: u64,
+            reward_tokens: Vec<RewardToken>,
+        ) -> Result<(), LendingError> {
+            let caller = self.env().caller();
+            let mut pool = self.liquidity_pools.get(pool_id).ok_or(LendingError::LoanNotFound)?;
+            
+            // Only pool creator can enable yield farming
+            if pool.liquidity_providers.is_empty() || pool.liquidity_providers[0].account != caller {
+                return Err(LendingError::Unauthorized);
+            }
+            
+            // Check if pool is active
+            if pool.status != PoolStatus::Active {
+                return Err(LendingError::LoanNotActive);
+            }
+            
+            // Validate reward tokens
+            if reward_tokens.is_empty() {
+                return Err(LendingError::InvalidAmount);
+            }
+            
+            // Enable yield farming
+            pool.yield_farming_enabled = true;
+            pool.reward_tokens = reward_tokens.clone();
+            
+            self.liquidity_pools.insert(pool_id, &pool);
+            
+            self.env().emit_event(YieldFarmingEnabled {
+                pool_id,
+                enabled_by: caller,
+                reward_tokens_count: reward_tokens.len() as u32,
+                staking_requirements: format!("Min: {}, Lock: {} blocks", 
+                    pool.staking_requirements.min_stake_amount, 
+                    pool.staking_requirements.lock_period),
+            });
+            
+            Ok(())
+        }
+        
+        /// Stake tokens for yield farming
+        #[ink(message)]
+        pub fn stake_tokens(&mut self, pool_id: u64, amount: Balance) -> Result<(), LendingError> {
+            let caller = self.env().caller();
+            let mut pool = self.liquidity_pools.get(pool_id).ok_or(LendingError::LoanNotFound)?;
+            
+            // Check if yield farming is enabled
+            if !pool.yield_farming_enabled {
+                return Err(LendingError::LoanNotActive);
+            }
+            
+            // Check if pool is active
+            if pool.status != PoolStatus::Active {
+                return Err(LendingError::LoanNotActive);
+            }
+            
+            // Validate staking amount
+            if amount < pool.staking_requirements.min_stake_amount || 
+               amount > pool.staking_requirements.max_stake_amount {
+                return Err(LendingError::InvalidAmount);
+            }
+            
+            // Calculate tier and multiplier
+            let (tier_level, multiplier) = self.calculate_staking_tier(&pool, amount)?;
+            
+            // Create or update staking position
+            let current_block = self.env().block_number() as u64;
+            let _lock_end_time = current_block + pool.staking_requirements.lock_period;
+            
+            // For now, we'll just update the pool's total staked tokens
+            // In a real implementation, you'd store individual staking positions
+            pool.total_staked_tokens += amount;
+            
+            self.liquidity_pools.insert(pool_id, &pool);
+            
+            self.env().emit_event(TokensStaked {
+                pool_id,
+                staker: caller,
+                amount,
+                tier_level: tier_level.clone(),
+                multiplier,
+                lock_period: pool.staking_requirements.lock_period,
+            });
+            
+            Ok(())
+        }
+        
+        /// Claim yield farming rewards
+        #[ink(message)]
+        pub fn claim_yield_rewards(&mut self, pool_id: u64) -> Result<Balance, LendingError> {
+            let caller = self.env().caller();
+            let pool = self.liquidity_pools.get(pool_id).ok_or(LendingError::LoanNotFound)?;
+            
+            // Check if yield farming is enabled
+            if !pool.yield_farming_enabled {
+                return Err(LendingError::LoanNotActive);
+            }
+            
+            // Check if pool is active
+            if pool.status != PoolStatus::Active {
+                return Err(LendingError::LoanNotActive);
+            }
+            
+            // For demonstration, calculate rewards based on staked amount and time
+            // In a real implementation, you'd track individual staking positions
+            let _current_block = self.env().block_number() as u64;
+            let base_reward_rate = 100; // 1% base reward rate
+            let staked_amount = 10000; // Assume staker has 10,000 staked
+            let time_factor = 1; // Assume 1 block since last claim
+            
+            // Calculate base rewards
+            let base_rewards = (staked_amount as f64 * base_reward_rate as f64 / 10000.0 * time_factor as f64) as u128;
+            
+            // Apply tier multiplier (assume Gold tier: 1.5x)
+            let tier_multiplier = 1500; // 1.5x
+            let total_rewards = (base_rewards as f64 * tier_multiplier as f64 / 1000.0) as u128;
+            
+            if total_rewards == 0 {
+                return Err(LendingError::InvalidAmount); // No rewards to claim
+            }
+            
+            self.env().emit_event(YieldRewardsClaimed {
+                pool_id,
+                staker: caller,
+                reward_amount: total_rewards,
+                reward_token: "LEND".to_string(), // Default reward token
+                tier_multiplier,
+                total_staked: pool.total_staked_tokens,
+            });
+            
+            Ok(total_rewards)
+        }
+        
+        /// Get yield farming information
+        #[ink(message)]
+        pub fn get_yield_farming_info(&self, pool_id: u64) -> Result<(bool, u32, Balance, u32), LendingError> {
+            let pool = self.liquidity_pools.get(pool_id).ok_or(LendingError::LoanNotFound)?;
+            Ok((
+                pool.yield_farming_enabled,
+                pool.reward_tokens.len() as u32,
+                pool.total_staked_tokens,
+                pool.tier_multipliers.len() as u32,
+            ))
+        }
+        
+        /// Get staking tier information
+        #[ink(message)]
+        pub fn get_staking_tiers(&self, pool_id: u64) -> Result<Vec<(String, Balance, u16, u16)>, LendingError> {
+            let pool = self.liquidity_pools.get(pool_id).ok_or(LendingError::LoanNotFound)?;
+            
+            let tiers: Vec<(String, Balance, u16, u16)> = pool.tier_multipliers.iter()
+                .map(|tier| (
+                    tier.tier_name.clone(),
+                    tier.min_stake_amount,
+                    tier.multiplier,
+                    tier.bonus_rewards,
+                ))
+                .collect();
+            
+            Ok(tiers)
+        }
+        
+        /// Calculate staking tier and multiplier
+        fn calculate_staking_tier(&self, pool: &LiquidityPool, amount: Balance) -> Result<(String, u16), LendingError> {
+            // Find the highest tier the staker qualifies for
+            let mut best_tier = None;
+            let mut best_multiplier = 0u16;
+            
+            for tier in &pool.tier_multipliers {
+                if amount >= tier.min_stake_amount && tier.multiplier > best_multiplier {
+                    best_tier = Some(tier.tier_name.clone());
+                    best_multiplier = tier.multiplier;
+                }
+            }
+            
+            match best_tier {
+                Some(tier_name) => Ok((tier_name, best_multiplier)),
+                None => Err(LendingError::InvalidAmount),
+            }
         }
     }
 } 

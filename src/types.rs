@@ -211,6 +211,11 @@ pub struct LiquidityPool {
     pub current_liquidity_ratio: u16, // Current liquidity ratio (basis points)
     pub rebalance_threshold: u16, // Threshold for triggering rebalance
     pub auto_rebalance_enabled: bool, // Whether auto-rebalancing is enabled
+    pub yield_farming_enabled: bool, // Whether yield farming is enabled
+    pub reward_tokens: Vec<RewardToken>, // Supported reward tokens
+    pub staking_requirements: StakingRequirements, // Staking requirements for yield farming
+    pub tier_multipliers: Vec<TierMultiplier>, // Reward tier multipliers
+    pub total_staked_tokens: Balance, // Total tokens staked for yield farming
 }
 
 #[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
@@ -231,6 +236,49 @@ pub enum PoolStatus {
     Paused,
     Closed,
     Emergency,
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub struct RewardToken {
+    pub token_address: AccountId,
+    pub symbol: String,
+    pub decimals: u8,
+    pub reward_rate: u16, // Reward rate in basis points
+    pub total_distributed: Balance,
+    pub is_active: bool,
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub struct StakingRequirements {
+    pub min_stake_amount: Balance,
+    pub lock_period: u64, // Minimum staking period in blocks
+    pub early_unstake_penalty: u16, // Penalty for early unstaking (basis points)
+    pub max_stake_amount: Balance,
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub struct TierMultiplier {
+    pub tier_name: String,
+    pub min_stake_amount: Balance,
+    pub multiplier: u16, // Multiplier in basis points (1000 = 1x)
+    pub bonus_rewards: u16, // Additional bonus rewards (basis points)
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub struct StakingPosition {
+    pub staker: AccountId,
+    pub staked_amount: Balance,
+    pub staked_at: u64,
+    pub last_reward_claim: u64,
+    pub total_rewards_earned: Balance,
+    pub tier_level: String,
+    pub multiplier: u16,
+    pub is_locked: bool,
+    pub lock_end_time: u64,
 }
 
 pub type AccountId = <ink_env::DefaultEnvironment as ink_env::Environment>::AccountId;
