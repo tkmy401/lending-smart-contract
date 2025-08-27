@@ -4,7 +4,7 @@ use ink_prelude::vec::Vec;
 use crate::types::{
     Loan, LoanStatus, UserProfile, PartialPayment, PaymentType, RefinanceRecord,
     InterestRateType, InterestRateAdjustment, RateAdjustmentReason, InterestType, CompoundFrequency, PaymentStructure,
-    GracePeriodReason, GracePeriodRecord, LiquidityPool, PoolStatus, LiquidityProvider, RewardToken, StakingRequirements, TierMultiplier
+    GracePeriodReason, GracePeriodRecord, LiquidityPool, PoolStatus, LiquidityProvider, RewardToken, StakingRequirements, TierMultiplier, StakingPosition
 };
 use crate::errors::LendingError;
 
@@ -2317,7 +2317,7 @@ pub mod lending_contract {
             
             // Create or update staking position
             let current_block = self.env().block_number() as u64;
-            let lock_end_time = current_block + pool.staking_requirements.lock_period;
+            let _lock_end_time = current_block + pool.staking_requirements.lock_period;
             
             // For now, we'll just update the pool's total staked tokens
             // In a real implementation, you'd store individual staking positions
@@ -2355,7 +2355,7 @@ pub mod lending_contract {
             
             // For demonstration, calculate rewards based on staked amount and time
             // In a real implementation, you'd track individual staking positions
-            let current_block = self.env().block_number() as u64;
+            let _current_block = self.env().block_number() as u64;
             let base_reward_rate = 100; // 1% base reward rate
             let staked_amount = 10000; // Assume staker has 10,000 staked
             let time_factor = 1; // Assume 1 block since last claim

@@ -1025,7 +1025,7 @@ fn main() {
     println!("\n8. Current Pool States...");
     
     for pool_id in 1..=3 {
-        if let Ok((name, total_liquidity, active_loans, total_volume, pool_fee, reward_rate, status)) = contract.get_liquidity_pool_info(pool_id) {
+        if let Ok((name, total_liquidity, active_loans, _total_volume, pool_fee, reward_rate, status)) = contract.get_liquidity_pool_info(pool_id) {
             println!("   Pool {}: {} - {} liquidity, {} loans, {}% fee, {}% reward, {:?}", 
                 pool_id, name, total_liquidity, active_loans, pool_fee as f64 / 100.0, reward_rate as f64 / 100.0, status);
         }
@@ -1062,11 +1062,11 @@ fn main() {
     
     for pool_id in 1..=3 {
         match contract.get_pool_rebalancing_info(pool_id) {
-            Ok((performance_score, last_rebalance, frequency, target_ratio, current_ratio, auto_enabled)) => {
+            Ok((performance_score, last_rebalance, _frequency, target_ratio, current_ratio, _auto_enabled)) => {
                 println!("   Pool {}: Performance: {}%, Last rebalance: block {}, Frequency: {} blocks", 
-                    pool_id, performance_score as f64 / 100.0, last_rebalance, frequency);
+                    pool_id, performance_score as f64 / 100.0, last_rebalance, _frequency);
                 println!("     Target ratio: {}%, Current ratio: {}%, Auto-rebalancing: {}", 
-                    target_ratio as f64 / 100.0, current_ratio as f64 / 100.0, auto_enabled);
+                    target_ratio as f64 / 100.0, current_ratio as f64 / 100.0, _auto_enabled);
             }
             Err(e) => println!("   ❌ Failed to get pool {} rebalancing info: {:?}", pool_id, e),
         }
@@ -1126,12 +1126,12 @@ fn main() {
                         
                         // Get updated rebalancing info
                         match contract.get_pool_rebalancing_info(1) {
-                            Ok((performance_score, last_rebalance, frequency, target_ratio, current_ratio, auto_enabled)) => {
-                                println!("   Updated Pool 1:");
-                                println!("     Performance score: {}%", performance_score as f64 / 100.0);
-                                println!("     Last rebalance: block {}", last_rebalance);
-                                println!("     Current ratio: {}% (target: {}%)", 
-                                    current_ratio as f64 / 100.0, target_ratio as f64 / 100.0);
+                                    Ok((performance_score, _last_rebalance, _frequency, _target_ratio, _current_ratio, _auto_enabled)) => {
+            println!("   Updated Pool 1:");
+            println!("   Performance score: {}%", performance_score as f64 / 100.0);
+            println!("   Last rebalance: block {}", _last_rebalance);
+            println!("   Current ratio: {}% (target: {}%)", 
+                _current_ratio as f64 / 100.0, _target_ratio as f64 / 100.0);
                             }
                             Err(e) => println!("   ❌ Failed to get updated info: {:?}", e),
                         }
@@ -1362,7 +1362,7 @@ fn main() {
     println!("   │ Staker      │ Staked      │ Tier        │ Multiplier  │ Effective Rate  │");
     println!("   ├─────────────┼─────────────┼─────────────┼─────────────┼─────────────────┤");
     
-    for (name, staked, tier, multiplier, effective_rate) in staking_scenarios.iter() {
+    for (name, staked, tier, _multiplier, effective_rate) in staking_scenarios.iter() {
         let base_rate = 1.0; // 1% base rate
         let effective = base_rate * effective_rate;
         println!("   │ {:<11} │ {:<11} │ {:<11} │ {:<11} │ {:<15} │", 

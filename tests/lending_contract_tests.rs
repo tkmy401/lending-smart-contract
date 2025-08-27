@@ -4,7 +4,7 @@ use ink::env::{
 };
 
 use lending_smart_contract::{
-    LendingContract, types::{LoanStatus, InterestRateType, RateAdjustmentReason}
+    LendingContract, types::{LoanStatus, InterestRateType}
 };
 
 // Test environment setup
@@ -18,16 +18,7 @@ fn setup() -> (LendingContract, test::DefaultAccounts<DefaultEnvironment>) {
     (contract, accounts)
 }
 
-fn setup_with_value(value: u128) -> (LendingContract, test::DefaultAccounts<DefaultEnvironment>) {
-    let accounts = test::default_accounts::<DefaultEnvironment>();
-    test::set_caller::<DefaultEnvironment>(accounts.alice);
-    let contract_id = accounts.charlie;
-    test::set_callee::<DefaultEnvironment>(contract_id);
-    test::set_value_transferred::<DefaultEnvironment>(value);
-    
-    let contract = LendingContract::new();
-    (contract, accounts)
-}
+
 
 #[test]
 fn test_contract_creation() {
@@ -91,7 +82,7 @@ fn test_early_repayment() {
     assert_eq!(discount, 500); // 5% discount for very early repayment
     
     // Test discount calculation logic
-    let loan = contract.get_loan(loan_id).unwrap();
+    let _loan = contract.get_loan(loan_id).unwrap();
     let total_repayment = 1000 + ((1000 * 500) / 10000); // 1000 + 50 = 1050
     let discount_amount = (total_repayment * discount as u128) / 10000; // 1050 * 5% = 52.5
     let discounted_repayment = total_repayment - discount_amount; // 1050 - 52.5 = 997.5
@@ -115,9 +106,9 @@ fn test_partial_repayment() {
     contract.fund_loan(loan_id).unwrap();
     
     // Test partial repayment logic without actual transfer
-    let loan = contract.get_loan(loan_id).unwrap();
-    assert_eq!(loan.status, LoanStatus::Active);
-    assert_eq!(loan.remaining_balance, 1050); // 1000 + 50 interest
+    let _loan = contract.get_loan(loan_id).unwrap();
+    assert_eq!(_loan.status, LoanStatus::Active);
+    assert_eq!(_loan.remaining_balance, 1050); // 1000 + 50 interest
     
     // Note: Actual partial repayment requires fund transfer which fails in test environment
 }
@@ -135,15 +126,15 @@ fn test_loan_extension() {
     contract.fund_loan(loan_id).unwrap();
     
     // Check loan state before extension
-    let loan = contract.get_loan(loan_id).unwrap();
+    let _loan = contract.get_loan(loan_id).unwrap();
     println!("Loan state before extension:");
-    println!("  Status: {:?}", loan.status);
-    println!("  Remaining balance: {}", loan.remaining_balance);
-    println!("  Extension fee rate: {} ({}%)", loan.extension_fee_rate, loan.extension_fee_rate as f64 / 100.0);
+    println!("  Status: {:?}", _loan.status);
+    println!("  Remaining balance: {}", _loan.remaining_balance);
+    println!("  Extension fee rate: {} ({}%)", _loan.extension_fee_rate, _loan.extension_fee_rate as f64 / 100.0);
     
     // Calculate expected extension fee
-    let expected_fee = (loan.remaining_balance * loan.extension_fee_rate as u128) / 10000;
-    println!("  Expected extension fee: {} ({} * {} / 10000)", expected_fee, loan.remaining_balance, loan.extension_fee_rate);
+    let expected_fee = (_loan.remaining_balance * _loan.extension_fee_rate as u128) / 10000;
+    println!("  Expected extension fee: {} ({} * {} / 10000)", expected_fee, _loan.remaining_balance, _loan.extension_fee_rate);
     
     // Test extension logic without actual transfer (which fails in test environment)
     // The extension fee calculation is correct: 1050 * 1% = 10.5, rounded down to 10
@@ -186,9 +177,9 @@ fn test_loan_refinancing() {
     contract.fund_loan(loan_id).unwrap();
     
     // Test refinancing logic without actual transfer (which fails in test environment)
-    let loan = contract.get_loan(loan_id).unwrap();
-    let refinance_fee = (loan.remaining_balance * loan.refinance_fee_rate as u128) / 10000;
-    println!("Refinance fee calculation: {} * {} / 10000 = {}", loan.remaining_balance, loan.refinance_fee_rate, refinance_fee);
+    let _loan = contract.get_loan(loan_id).unwrap();
+    let refinance_fee = (_loan.remaining_balance * _loan.refinance_fee_rate as u128) / 10000;
+    println!("Refinance fee calculation: {} * {} / 10000 = {}", _loan.remaining_balance, _loan.refinance_fee_rate, refinance_fee);
     
     // The refinance fee calculation is correct: 1050 * 2% = 21
     assert_eq!(refinance_fee, 21);
@@ -288,7 +279,7 @@ fn test_loan_queries() {
     
     // Create multiple loans
     let loan1 = contract.create_loan(1000, 500, 1000, 1500).unwrap();
-    let loan2 = contract.create_loan(2000, 800, 1500, 3000).unwrap();
+    let _loan2 = contract.create_loan(2000, 800, 1500, 3000).unwrap();
     
     // Test total loans
     assert_eq!(contract.get_total_loans(), 2);
