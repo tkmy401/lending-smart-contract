@@ -216,6 +216,10 @@ pub struct LiquidityPool {
     pub staking_requirements: StakingRequirements, // Staking requirements for yield farming
     pub tier_multipliers: Vec<TierMultiplier>, // Reward tier multipliers
     pub total_staked_tokens: Balance, // Total tokens staked for yield farming
+    pub market_depth_levels: Vec<MarketDepthLevel>, // Market depth at different price levels
+    pub optimal_distribution: OptimalDistribution, // Optimal liquidity distribution settings
+    pub depth_based_pricing: bool, // Whether depth-based pricing is enabled
+    pub concentration_limits: ConcentrationLimits, // Limits to prevent over-concentration
 }
 
 #[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
@@ -279,6 +283,34 @@ pub struct StakingPosition {
     pub multiplier: u16,
     pub is_locked: bool,
     pub lock_end_time: u64,
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub struct MarketDepthLevel {
+    pub price_level: u16, // Price level in basis points (1000 = 100%)
+    pub liquidity_available: Balance, // Available liquidity at this price level
+    pub order_count: u32, // Number of orders at this price level
+    pub last_updated: u64, // Block number when this level was last updated
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub struct OptimalDistribution {
+    pub target_depth_spread: u16, // Target spread across depth levels (basis points)
+    pub min_depth_per_level: Balance, // Minimum liquidity per depth level
+    pub max_depth_per_level: Balance, // Maximum liquidity per depth level
+    pub rebalancing_threshold: u16, // Threshold for triggering rebalancing
+    pub auto_optimization_enabled: bool, // Whether auto-optimization is enabled
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub struct ConcentrationLimits {
+    pub max_single_pool_concentration: u16, // Maximum concentration in single pool (basis points)
+    pub max_provider_concentration: u16, // Maximum concentration per provider (basis points)
+    pub min_pool_diversity: u16, // Minimum number of pools for diversification
+    pub concentration_check_frequency: u64, // How often to check concentration (blocks)
 }
 
 pub type AccountId = <ink_env::DefaultEnvironment as ink_env::Environment>::AccountId;
