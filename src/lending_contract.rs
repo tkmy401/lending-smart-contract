@@ -3152,7 +3152,7 @@ pub mod lending_contract {
         }
         
         // Helper functions for credit score calculation
-        fn calculate_payment_history_score(&self, user_id: AccountId) -> Result<u16, LendingError> {
+        fn calculate_payment_history_score(&self, _user_id: AccountId) -> Result<u16, LendingError> {
             // Simplified payment history calculation
             // In a real implementation, this would analyze actual payment data
             Ok(700) // Default score
@@ -3191,12 +3191,12 @@ pub mod lending_contract {
             }
         }
         
-        fn calculate_new_credit_score(&self, user_id: AccountId) -> Result<u16, LendingError> {
+        fn calculate_new_credit_score(&self, _user_id: AccountId) -> Result<u16, LendingError> {
             // Simplified new credit calculation
             Ok(600) // Default score
         }
         
-        fn calculate_credit_mix_score(&self, user_id: AccountId) -> Result<u16, LendingError> {
+        fn calculate_credit_mix_score(&self, _user_id: AccountId) -> Result<u16, LendingError> {
             // Simplified credit mix calculation
             Ok(650) // Default score
         }
@@ -3217,22 +3217,22 @@ pub mod lending_contract {
         }
         
         // Helper functions for fraud detection
-        fn check_unusual_activity(&self, user_id: AccountId, threshold: u16) -> Option<String> {
+        fn check_unusual_activity(&self, _user_id: AccountId, _threshold: u16) -> Option<String> {
             // Simplified unusual activity check
             None // No unusual activity detected
         }
         
-        fn check_multiple_accounts(&self, user_id: AccountId, threshold: u16) -> Option<String> {
+        fn check_multiple_accounts(&self, _user_id: AccountId, _threshold: u16) -> Option<String> {
             // Simplified multiple accounts check
             None // No multiple accounts detected
         }
         
-        fn check_rapid_transactions(&self, user_id: AccountId, threshold: u16) -> Option<String> {
+        fn check_rapid_transactions(&self, _user_id: AccountId, _threshold: u16) -> Option<String> {
             // Simplified rapid transactions check
             None // No rapid transactions detected
         }
         
-        fn check_amount_threshold(&self, user_id: AccountId, threshold: u16) -> Option<String> {
+        fn check_amount_threshold(&self, _user_id: AccountId, _threshold: u16) -> Option<String> {
             // Simplified amount threshold check
             None // No amount threshold violations
         }
