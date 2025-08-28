@@ -4,7 +4,8 @@ use ink_prelude::vec::Vec;
 use crate::types::{
     Loan, LoanStatus, UserProfile, PartialPayment, PaymentType, RefinanceRecord,
     InterestRateType, InterestRateAdjustment, RateAdjustmentReason, InterestType, CompoundFrequency, PaymentStructure,
-    GracePeriodReason, GracePeriodRecord, LiquidityPool, PoolStatus, LiquidityProvider, RewardToken, StakingRequirements, TierMultiplier, StakingPosition
+    GracePeriodReason, GracePeriodRecord, LiquidityPool, PoolStatus, LiquidityProvider, RewardToken, StakingRequirements, TierMultiplier, StakingPosition,
+    MarketDepthLevel, OptimalDistribution, ConcentrationLimits
 };
 use crate::errors::LendingError;
 
@@ -254,6 +255,36 @@ pub mod lending_contract {
         reward_token: String,
         tier_multiplier: u16,
         total_staked: Balance,
+    }
+
+    #[ink(event)]
+    pub struct MarketDepthUpdated {
+        #[ink(topic)]
+        pool_id: u64,
+        price_level: u16,
+        liquidity_change: Balance,
+        new_depth: Balance,
+        order_count: u32,
+    }
+
+    #[ink(event)]
+    pub struct OptimalDistributionApplied {
+        #[ink(topic)]
+        pool_id: u64,
+        old_distribution: String,
+        new_distribution: String,
+        optimization_reason: String,
+        total_liquidity_moved: Balance,
+    }
+
+    #[ink(event)]
+    pub struct ConcentrationLimitExceeded {
+        #[ink(topic)]
+        pool_id: u64,
+        limit_type: String,
+        current_concentration: u16,
+        limit_threshold: u16,
+        action_taken: String,
     }
 
     impl LendingContract {
@@ -1678,6 +1709,40 @@ pub mod lending_contract {
                     },
                 ],
                 total_staked_tokens: 0,
+                market_depth_levels: vec![
+                    MarketDepthLevel {
+                        price_level: 950, // 95% price level
+                        liquidity_available: 0,
+                        order_count: 0,
+                        last_updated: current_block,
+                    },
+                    MarketDepthLevel {
+                        price_level: 1000, // 100% price level
+                        liquidity_available: 0,
+                        order_count: 0,
+                        last_updated: current_block,
+                    },
+                    MarketDepthLevel {
+                        price_level: 1050, // 105% price level
+                        liquidity_available: 0,
+                        order_count: 0,
+                        last_updated: current_block,
+                    },
+                ],
+                optimal_distribution: OptimalDistribution {
+                    target_depth_spread: 200, // 2% spread across levels
+                    min_depth_per_level: 1000, // Minimum 1,000 per level
+                    max_depth_per_level: 50000, // Maximum 50,000 per level
+                    rebalancing_threshold: 300, // 3% threshold for rebalancing
+                    auto_optimization_enabled: true,
+                },
+                depth_based_pricing: false, // Default: disabled
+                concentration_limits: ConcentrationLimits {
+                    max_single_pool_concentration: 8000, // Max 80% in single pool
+                    max_provider_concentration: 5000, // Max 50% per provider
+                    min_pool_diversity: 2, // Minimum 2 pools
+                    concentration_check_frequency: 14400, // Check daily
+                },
             };
             
             // Add creator as first liquidity provider
@@ -2429,6 +2494,243 @@ pub mod lending_contract {
                 Some(tier_name) => Ok((tier_name, best_multiplier)),
                 None => Err(LendingError::InvalidAmount),
             }
+        }
+
+        // ============================================================================
+        // MARKET DEPTH MANAGEMENT & OPTIMAL LIQUIDITY DISTRIBUTION
+        // ============================================================================
+        
+        /// Update market depth at a specific price level
+        #[ink(message)]
+        pub fn update_market_depth(
+            &mut self,
+            pool_id: u64,
+            price_level: u16,
+            liquidity_change: i128, // Allow negative values for removal
+            order_count_change: i32,
+        ) -> Result<(), LendingError> {
+            let _caller = self.env().caller();
+            let mut pool = self.liquidity_pools.get(pool_id).ok_or(LendingError::LoanNotFound)?;
+            
+            // Check if pool is active
+            if pool.status != PoolStatus::Active {
+                return Err(LendingError::LoanNotActive);
+            }
+            
+            // Find the market depth level
+            let level_index = pool.market_depth_levels.iter().position(|level| level.price_level == price_level);
+            if level_index.is_none() {
+                return Err(LendingError::InvalidAmount); // Invalid price level
+            }
+            
+            let level_index = level_index.unwrap();
+            let mut level = pool.market_depth_levels[level_index].clone();
+            
+            // Update liquidity and order count
+            if liquidity_change < 0 && (-liquidity_change) > level.liquidity_available as i128 {
+                return Err(LendingError::InvalidAmount); // Cannot remove more than available
+            }
+            
+            level.liquidity_available = if liquidity_change > 0 {
+                level.liquidity_available + liquidity_change as u128
+            } else {
+                level.liquidity_available.saturating_sub((-liquidity_change) as u128)
+            };
+            
+            level.order_count = if order_count_change > 0 {
+                level.order_count + order_count_change as u32
+            } else {
+                level.order_count.saturating_sub(order_count_change.abs() as u32)
+            };
+            
+            level.last_updated = self.env().block_number() as u64;
+            
+            // Update the pool
+            pool.market_depth_levels[level_index] = level.clone();
+            self.liquidity_pools.insert(pool_id, &pool);
+            
+            self.env().emit_event(MarketDepthUpdated {
+                pool_id,
+                price_level,
+                liquidity_change: liquidity_change.abs() as u128,
+                new_depth: level.liquidity_available,
+                order_count: level.order_count,
+            });
+            
+            Ok(())
+        }
+        
+        /// Apply optimal distribution algorithm
+        #[ink(message)]
+        pub fn apply_optimal_distribution(&mut self, pool_id: u64) -> Result<(), LendingError> {
+            let caller = self.env().caller();
+            let mut pool = self.liquidity_pools.get(pool_id).ok_or(LendingError::LoanNotFound)?;
+            
+            // Only pool creator can apply optimal distribution
+            if pool.liquidity_providers.is_empty() || pool.liquidity_providers[0].account != caller {
+                return Err(LendingError::Unauthorized);
+            }
+            
+            // Check if pool is active
+            if pool.status != PoolStatus::Active {
+                return Err(LendingError::LoanNotActive);
+            }
+            
+            // Calculate optimal distribution
+            let old_distribution = self.get_market_depth_summary(&pool)?;
+            let (new_distribution, optimization_reason, liquidity_moved) = self.calculate_optimal_distribution(&pool)?;
+            
+            // Apply the new distribution
+            pool.market_depth_levels = new_distribution;
+            self.liquidity_pools.insert(pool_id, &pool);
+            
+            self.env().emit_event(OptimalDistributionApplied {
+                pool_id,
+                old_distribution,
+                optimization_reason,
+                new_distribution: self.get_market_depth_summary(&pool)?,
+                total_liquidity_moved: liquidity_moved,
+            });
+            
+            Ok(())
+        }
+        
+        /// Check concentration limits and apply corrections
+        #[ink(message)]
+        pub fn check_concentration_limits(&mut self, pool_id: u64) -> Result<(), LendingError> {
+            let caller = self.env().caller();
+            let pool = self.liquidity_pools.get(pool_id).ok_or(LendingError::LoanNotFound)?;
+            
+            // Only pool creator can check concentration limits
+            if pool.liquidity_providers.is_empty() || pool.liquidity_providers[0].account != caller {
+                return Err(LendingError::Unauthorized);
+            }
+            
+            // Check single pool concentration
+            let total_liquidity = pool.total_liquidity;
+            let max_concentration = pool.concentration_limits.max_single_pool_concentration;
+            let current_concentration = if total_liquidity > 0 {
+                (total_liquidity * 10000) / self.total_liquidity
+            } else {
+                0
+            };
+            
+            if current_concentration > max_concentration as u128 {
+                let action = "Pool concentration limit exceeded - consider reducing liquidity";
+                self.env().emit_event(ConcentrationLimitExceeded {
+                    pool_id,
+                    limit_type: "Single Pool Concentration".to_string(),
+                    current_concentration: current_concentration as u16,
+                    limit_threshold: max_concentration,
+                    action_taken: action.to_string(),
+                });
+            }
+            
+            // Check provider concentration
+            for provider in &pool.liquidity_providers {
+                let provider_concentration = if total_liquidity > 0 {
+                    (provider.liquidity_provided * 10000) / total_liquidity
+                } else {
+                    0
+                };
+                
+                if provider_concentration > pool.concentration_limits.max_provider_concentration as u128 {
+                    let action = "Provider concentration limit exceeded - consider reducing stake";
+                    self.env().emit_event(ConcentrationLimitExceeded {
+                        pool_id,
+                        limit_type: "Provider Concentration".to_string(),
+                        current_concentration: provider_concentration as u16,
+                        limit_threshold: pool.concentration_limits.max_provider_concentration,
+                        action_taken: action.to_string(),
+                    });
+                }
+            }
+            
+            Ok(())
+        }
+        
+        /// Get market depth information
+        #[ink(message)]
+        pub fn get_market_depth_info(&self, pool_id: u64) -> Result<(Vec<(u16, Balance, u32)>, bool, String), LendingError> {
+            let pool = self.liquidity_pools.get(pool_id).ok_or(LendingError::LoanNotFound)?;
+            
+            let depth_info: Vec<(u16, Balance, u32)> = pool.market_depth_levels.iter()
+                .map(|level| (level.price_level, level.liquidity_available, level.order_count))
+                .collect();
+            
+            let distribution_summary = self.get_market_depth_summary(&pool)?;
+            
+            Ok((depth_info, pool.depth_based_pricing, distribution_summary))
+        }
+        
+        /// Enable or disable depth-based pricing
+        #[ink(message)]
+        pub fn set_depth_based_pricing(&mut self, pool_id: u64, enabled: bool) -> Result<(), LendingError> {
+            let caller = self.env().caller();
+            let mut pool = self.liquidity_pools.get(pool_id).ok_or(LendingError::LoanNotFound)?;
+            
+            // Only pool creator can change depth-based pricing
+            if pool.liquidity_providers.is_empty() || pool.liquidity_providers[0].account != caller {
+                return Err(LendingError::Unauthorized);
+            }
+            
+            pool.depth_based_pricing = enabled;
+            self.liquidity_pools.insert(pool_id, &pool);
+            
+            Ok(())
+        }
+        
+        /// Calculate optimal distribution
+        fn calculate_optimal_distribution(&self, pool: &LiquidityPool) -> Result<(Vec<MarketDepthLevel>, String, Balance), LendingError> {
+            let total_liquidity = pool.total_liquidity;
+            let _target_spread = pool.optimal_distribution.target_depth_spread;
+            let min_per_level = pool.optimal_distribution.min_depth_per_level;
+            let max_per_level = pool.optimal_distribution.max_depth_per_level;
+            
+            let mut new_levels = Vec::new();
+            let mut total_moved = 0u128;
+            
+            // Calculate optimal distribution across price levels
+            for level in &pool.market_depth_levels {
+                let mut new_level = level.clone();
+                
+                // Calculate target liquidity for this level
+                let target_liquidity = total_liquidity / pool.market_depth_levels.len() as u128;
+                let current_liquidity = level.liquidity_available;
+                
+                if target_liquidity > current_liquidity {
+                    let to_add = (target_liquidity - current_liquidity).min(max_per_level - current_liquidity);
+                    new_level.liquidity_available = current_liquidity + to_add;
+                    total_moved += to_add;
+                } else if current_liquidity > target_liquidity {
+                    let to_remove = (current_liquidity - target_liquidity).min(current_liquidity - min_per_level);
+                    new_level.liquidity_available = current_liquidity - to_remove;
+                    total_moved += to_remove;
+                }
+                
+                new_level.last_updated = self.env().block_number() as u64;
+                new_levels.push(new_level);
+            }
+            
+            let reason = if total_moved > 0 {
+                "Optimal distribution applied to balance liquidity across price levels".to_string()
+            } else {
+                "Distribution already optimal - no changes needed".to_string()
+            };
+            
+            Ok((new_levels, reason, total_moved))
+        }
+        
+        /// Get market depth summary
+        fn get_market_depth_summary(&self, pool: &LiquidityPool) -> Result<String, LendingError> {
+            let total_depth: u128 = pool.market_depth_levels.iter()
+                .map(|level| level.liquidity_available)
+                .sum();
+            
+            let level_count = pool.market_depth_levels.len();
+            let avg_depth = if level_count > 0 { total_depth / level_count as u128 } else { 0 };
+            
+            Ok(format!("Total: {}, Levels: {}, Avg: {}", total_depth, level_count, avg_depth))
         }
     }
 } 
