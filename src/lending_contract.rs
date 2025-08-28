@@ -5,7 +5,7 @@ use crate::types::{
     Loan, LoanStatus, UserProfile, PartialPayment, PaymentType, RefinanceRecord,
     InterestRateType, InterestRateAdjustment, RateAdjustmentReason, InterestType, CompoundFrequency, PaymentStructure,
     GracePeriodReason, GracePeriodRecord, LiquidityPool, PoolStatus, LiquidityProvider, RewardToken, StakingRequirements, TierMultiplier, StakingPosition,
-    MarketDepthLevel, OptimalDistribution, ConcentrationLimits, CollateralType, CollateralRequirement, InsurancePolicy, InsuranceStatus, FraudDetectionRule, FraudRuleType, FraudAction, ComplianceRecord, ComplianceStatus, CreditScore, CreditFactor, CreditFactorType, CreditScoreRecord, RiskLevel,
+    MarketDepthLevel, OptimalDistribution, ConcentrationLimits, CollateralType, CollateralRequirement, InsurancePolicy, InsuranceStatus, FraudDetectionRule, FraudRuleType, FraudAction, ComplianceRecord, ComplianceStatus, ComplianceType, CreditScore, CreditFactor, CreditFactorType, CreditScoreRecord, RiskLevel,
 };
 use crate::errors::LendingError;
 
@@ -2816,7 +2816,7 @@ pub mod lending_contract {
                 return Err(LendingError::Unauthorized);
             }
             
-            let user_profile = self.user_profiles.get(user_id).ok_or(LendingError::LoanNotFound)?;
+            let _user_profile = self.user_profiles.get(user_id).ok_or(LendingError::LoanNotFound)?;
             let current_score = self.credit_scores.get(user_id);
             
             // Calculate credit score based on various factors
@@ -3091,7 +3091,7 @@ pub mod lending_contract {
             let record = ComplianceRecord {
                 record_id: updated_records.len() as u64 + 1,
                 user_id,
-                compliance_type,
+                compliance_type: compliance_type.clone(),
                 status: status.clone(),
                 verification_date: self.env().block_number() as u64,
                 expiry_date: self.env().block_number() as u64 + 5184000, // 1 year
