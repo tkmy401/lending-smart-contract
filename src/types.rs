@@ -62,6 +62,11 @@ pub struct Loan {
     pub pool_share: u16, // Share of the pool (basis points)
     pub liquidity_provider: Option<AccountId>, // Who provided the liquidity
     pub pool_rewards_earned: Balance, // Rewards earned from pool participation
+    pub credit_score: Option<CreditScore>, // Borrower's credit score
+    pub collateral_requirements: Vec<CollateralRequirement>, // Collateral requirements
+    pub insurance_policies: Vec<InsurancePolicy>, // Insurance coverage
+    pub fraud_flags: Vec<FraudDetectionRule>, // Fraud detection flags
+    pub compliance_status: ComplianceStatus, // Compliance verification status
 }
 
 #[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
@@ -311,6 +316,160 @@ pub struct ConcentrationLimits {
     pub max_provider_concentration: u16, // Maximum concentration per provider (basis points)
     pub min_pool_diversity: u16, // Minimum number of pools for diversification
     pub concentration_check_frequency: u64, // How often to check concentration (blocks)
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub struct CreditScore {
+    pub score: u16, // Credit score (300-850)
+    pub factors: Vec<CreditFactor>, // Factors contributing to score
+    pub last_updated: u64, // Block number when score was last updated
+    pub score_history: Vec<CreditScoreRecord>, // Historical score changes
+    pub risk_level: RiskLevel, // Risk level based on score
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub struct CreditFactor {
+    pub factor_type: CreditFactorType,
+    pub weight: u16, // Weight in basis points (1000 = 100%)
+    pub value: u16, // Factor value
+    pub description: String,
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub struct CreditScoreRecord {
+    pub score: u16,
+    pub change: i16, // Score change from previous
+    pub reason: String,
+    pub timestamp: u64,
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub struct CollateralRequirement {
+    pub collateral_type: CollateralType,
+    pub required_amount: Balance, // Required collateral amount
+    pub current_amount: Balance, // Current collateral provided
+    pub liquidation_threshold: u16, // Liquidation threshold in basis points
+    pub maintenance_margin: u16, // Maintenance margin in basis points
+    pub last_updated: u64,
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub struct InsurancePolicy {
+    pub policy_id: u64,
+    pub insured_amount: Balance, // Amount insured
+    pub premium_rate: u16, // Premium rate in basis points
+    pub coverage_period: u64, // Coverage period in blocks
+    pub deductible: Balance, // Deductible amount
+    pub status: InsuranceStatus,
+    pub created_at: u64,
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub struct FraudDetectionRule {
+    pub rule_id: u64,
+    pub rule_type: FraudRuleType,
+    pub threshold: u16, // Threshold value
+    pub action: FraudAction, // Action to take when triggered
+    pub is_active: bool,
+    pub description: String,
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub struct ComplianceRecord {
+    pub record_id: u64,
+    pub user_id: AccountId,
+    pub compliance_type: ComplianceType,
+    pub status: ComplianceStatus,
+    pub verification_date: u64,
+    pub expiry_date: u64,
+    pub documents: Vec<String>, // Document references
+}
+
+// Enums for risk management
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub enum RiskLevel {
+    Excellent, // 750-850
+    Good,      // 700-749
+    Fair,      // 650-699
+    Poor,      // 600-649
+    VeryPoor,  // 300-599
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub enum CreditFactorType {
+    PaymentHistory,      // Payment history weight
+    CreditUtilization,   // Credit utilization ratio
+    CreditHistoryLength, // Length of credit history
+    NewCredit,           // New credit applications
+    CreditMix,           // Types of credit used
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub enum CollateralType {
+    Stablecoin,    // USDC, DAI, etc.
+    Cryptocurrency, // BTC, ETH, etc.
+    NFT,           // Non-fungible tokens
+    RealEstate,    // Real estate tokens
+    Commodities,   // Gold, silver tokens
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub enum InsuranceStatus {
+    Active,
+    Expired,
+    Cancelled,
+    Claimed,
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub enum FraudRuleType {
+    UnusualActivity,    // Unusual transaction patterns
+    MultipleAccounts,   // Multiple account creation
+    RapidTransactions,  // Rapid transaction sequences
+    GeographicAnomaly, // Geographic location anomalies
+    AmountThreshold,    // Amount threshold violations
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub enum FraudAction {
+    Flag,           // Flag for review
+    Block,          // Block transaction
+    RequireKYC,     // Require additional KYC
+    FreezeAccount,  // Freeze account temporarily
+    Report,         // Report to authorities
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub enum ComplianceType {
+    KYC,            // Know Your Customer
+    AML,            // Anti-Money Laundering
+    Identity,       // Identity verification
+    Address,        // Address verification
+    SourceOfFunds,  // Source of funds verification
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub enum ComplianceStatus {
+    Pending,        // Verification pending
+    Verified,       // Successfully verified
+    Rejected,       // Verification rejected
+    Expired,        // Verification expired
+    UnderReview,    // Under manual review
 }
 
 pub type AccountId = <ink_env::DefaultEnvironment as ink_env::Environment>::AccountId;

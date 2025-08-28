@@ -5,7 +5,7 @@ use crate::types::{
     Loan, LoanStatus, UserProfile, PartialPayment, PaymentType, RefinanceRecord,
     InterestRateType, InterestRateAdjustment, RateAdjustmentReason, InterestType, CompoundFrequency, PaymentStructure,
     GracePeriodReason, GracePeriodRecord, LiquidityPool, PoolStatus, LiquidityProvider, RewardToken, StakingRequirements, TierMultiplier, StakingPosition,
-    MarketDepthLevel, OptimalDistribution, ConcentrationLimits
+    MarketDepthLevel, OptimalDistribution, ConcentrationLimits, CollateralType, CollateralRequirement, InsurancePolicy, InsuranceStatus, FraudDetectionRule, FraudRuleType, FraudAction, ComplianceRecord, ComplianceStatus, CreditScore, CreditFactor, CreditFactorType, CreditScoreRecord, RiskLevel,
 };
 use crate::errors::LendingError;
 
@@ -48,6 +48,13 @@ pub mod lending_contract {
         total_pools: u64,
         liquidity_pools: Mapping<u64, LiquidityPool>,
         pool_liquidity_providers: Mapping<u64, Vec<AccountId>>,
+        // Risk Management & Security
+        total_insurance_policies: u64,
+        insurance_policies: Mapping<u64, InsurancePolicy>,
+        fraud_detection_rules: Mapping<u64, FraudDetectionRule>,
+        total_fraud_rules: u64,
+        compliance_records: Mapping<AccountId, Vec<ComplianceRecord>>,
+        credit_scores: Mapping<AccountId, CreditScore>,
     }
 
     // ============================================================================
@@ -287,6 +294,56 @@ pub mod lending_contract {
         action_taken: String,
     }
 
+    #[ink(event)]
+    pub struct CreditScoreUpdated {
+        #[ink(topic)]
+        user_id: AccountId,
+        old_score: u16,
+        new_score: u16,
+        change_reason: String,
+        risk_level: String,
+    }
+
+    #[ink(event)]
+    pub struct CollateralRequirementUpdated {
+        #[ink(topic)]
+        loan_id: u64,
+        collateral_type: String,
+        old_amount: Balance,
+        new_amount: Balance,
+        reason: String,
+    }
+
+    #[ink(event)]
+    pub struct InsurancePolicyCreated {
+        #[ink(topic)]
+        policy_id: u64,
+        loan_id: u64,
+        insured_amount: Balance,
+        premium_rate: u16,
+        coverage_period: u64,
+    }
+
+    #[ink(event)]
+    pub struct FraudDetected {
+        #[ink(topic)]
+        user_id: AccountId,
+        rule_type: String,
+        threshold: u16,
+        action: String,
+        description: String,
+    }
+
+    #[ink(event)]
+    pub struct ComplianceStatusUpdated {
+        #[ink(topic)]
+        user_id: AccountId,
+        compliance_type: String,
+        old_status: String,
+        new_status: String,
+        verification_date: u64,
+    }
+
     impl LendingContract {
         // ============================================================================
         // CONSTRUCTOR
@@ -302,9 +359,16 @@ pub mod lending_contract {
                 total_liquidity: 0,
                 protocol_fee: 50, // 0.5%
                 min_collateral_ratio: 150, // 150%
-                total_pools: 0,
-                liquidity_pools: Mapping::default(),
-                pool_liquidity_providers: Mapping::default(),
+                            total_pools: 0,
+            liquidity_pools: Mapping::default(),
+            pool_liquidity_providers: Mapping::default(),
+            // Risk Management & Security
+            total_insurance_policies: 0,
+            insurance_policies: Mapping::default(),
+            fraud_detection_rules: Mapping::default(),
+            total_fraud_rules: 0,
+            compliance_records: Mapping::default(),
+            credit_scores: Mapping::default(),
             }
         }
 
@@ -408,6 +472,11 @@ pub mod lending_contract {
                 pool_share: 0,
                 liquidity_provider: None,
                 pool_rewards_earned: 0,
+                credit_score: None,
+                collateral_requirements: Vec::new(),
+                insurance_policies: Vec::new(),
+                fraud_flags: Vec::new(),
+                compliance_status: ComplianceStatus::Pending,
             };
 
             self.loans.insert(loan_id, &loan);
@@ -2731,6 +2800,454 @@ pub mod lending_contract {
             let avg_depth = if level_count > 0 { total_depth / level_count as u128 } else { 0 };
             
             Ok(format!("Total: {}, Levels: {}, Avg: {}", total_depth, level_count, avg_depth))
+        }
+
+        // ============================================================================
+        // RISK MANAGEMENT & SECURITY FEATURES
+        // ============================================================================
+        
+        /// Calculate and update credit score for a user
+        #[ink(message)]
+        pub fn calculate_credit_score(&mut self, user_id: AccountId) -> Result<u16, LendingError> {
+            let caller = self.env().caller();
+            
+            // Only authorized users can calculate credit scores
+            if caller != user_id && !self.is_authorized_admin(caller) {
+                return Err(LendingError::Unauthorized);
+            }
+            
+            let user_profile = self.user_profiles.get(user_id).ok_or(LendingError::LoanNotFound)?;
+            let current_score = self.credit_scores.get(user_id);
+            
+            // Calculate credit score based on various factors
+            let mut total_score = 300u16; // Base score
+            
+            // Factor 1: Payment History (35% weight)
+            let payment_score = self.calculate_payment_history_score(user_id)?;
+            total_score += (payment_score * 35) / 100;
+            
+            // Factor 2: Credit Utilization (30% weight)
+            let utilization_score = self.calculate_credit_utilization_score(user_id)?;
+            total_score += (utilization_score * 30) / 100;
+            
+            // Factor 3: Credit History Length (15% weight)
+            let history_score = self.calculate_credit_history_score(user_id)?;
+            total_score += (history_score * 15) / 100;
+            
+            // Factor 4: New Credit (10% weight)
+            let new_credit_score = self.calculate_new_credit_score(user_id)?;
+            total_score += (new_credit_score * 10) / 100;
+            
+            // Factor 5: Credit Mix (10% weight)
+            let mix_score = self.calculate_credit_mix_score(user_id)?;
+            total_score += (mix_score * 10) / 100;
+            
+            // Ensure score is within valid range (300-850)
+            total_score = total_score.min(850).max(300);
+            
+            // Create credit score record
+            let old_score = current_score.as_ref().map(|cs| cs.score).unwrap_or(0);
+            let risk_level = self.determine_risk_level(total_score);
+            
+            let credit_score = CreditScore {
+                score: total_score,
+                factors: vec![
+                    CreditFactor {
+                        factor_type: CreditFactorType::PaymentHistory,
+                        weight: 3500, // 35%
+                        value: payment_score,
+                        description: "Payment history score".to_string(),
+                    },
+                    CreditFactor {
+                        factor_type: CreditFactorType::CreditUtilization,
+                        weight: 3000, // 30%
+                        value: utilization_score,
+                        description: "Credit utilization score".to_string(),
+                    },
+                    CreditFactor {
+                        factor_type: CreditFactorType::CreditHistoryLength,
+                        weight: 1500, // 15%
+                        value: history_score,
+                        description: "Credit history length score".to_string(),
+                    },
+                    CreditFactor {
+                        factor_type: CreditFactorType::NewCredit,
+                        weight: 1000, // 10%
+                        value: new_credit_score,
+                        description: "New credit score".to_string(),
+                    },
+                    CreditFactor {
+                        factor_type: CreditFactorType::CreditMix,
+                        weight: 1000, // 10%
+                        value: mix_score,
+                        description: "Credit mix score".to_string(),
+                    },
+                ],
+                last_updated: self.env().block_number() as u64,
+                score_history: vec![
+                    CreditScoreRecord {
+                        score: total_score,
+                        change: (total_score as i16) - (old_score as i16),
+                        reason: "Credit score calculated".to_string(),
+                        timestamp: self.env().block_number() as u64,
+                    }
+                ],
+                risk_level: risk_level.clone(),
+            };
+            
+            // Update credit score
+            self.credit_scores.insert(user_id, &credit_score);
+            
+            // Emit event
+            self.env().emit_event(CreditScoreUpdated {
+                user_id,
+                old_score,
+                new_score: total_score,
+                change_reason: "Credit score calculated".to_string(),
+                risk_level: format!("{:?}", risk_level),
+            });
+            
+            Ok(total_score)
+        }
+        
+        /// Set collateral requirements for a loan
+        #[ink(message)]
+        pub fn set_collateral_requirements(
+            &mut self,
+            loan_id: u64,
+            collateral_type: CollateralType,
+            required_amount: Balance,
+            liquidation_threshold: u16,
+            maintenance_margin: u16,
+        ) -> Result<(), LendingError> {
+            let caller = self.env().caller();
+            let mut loan = self.loans.get(loan_id).ok_or(LendingError::LoanNotFound)?;
+            
+            // Only lender or authorized admin can set collateral requirements
+            if loan.lender != Some(caller) && !self.is_authorized_admin(caller) {
+                return Err(LendingError::Unauthorized);
+            }
+            
+            let collateral_req = CollateralRequirement {
+                collateral_type,
+                required_amount,
+                current_amount: 0, // Initially no collateral provided
+                liquidation_threshold,
+                maintenance_margin,
+                last_updated: self.env().block_number() as u64,
+            };
+            
+            loan.collateral_requirements.push(collateral_req);
+            self.loans.insert(loan_id, &loan);
+            
+            Ok(())
+        }
+        
+        /// Create insurance policy for a loan
+        #[ink(message)]
+        pub fn create_insurance_policy(
+            &mut self,
+            loan_id: u64,
+            insured_amount: Balance,
+            premium_rate: u16,
+            coverage_period: u64,
+            deductible: Balance,
+        ) -> Result<u64, LendingError> {
+            let caller = self.env().caller();
+            let loan = self.loans.get(loan_id).ok_or(LendingError::LoanNotFound)?;
+            
+            // Only borrower can create insurance policy
+            if loan.borrower != caller {
+                return Err(LendingError::Unauthorized);
+            }
+            
+            let policy_id = self.total_insurance_policies + 1;
+            let policy = InsurancePolicy {
+                policy_id,
+                insured_amount,
+                premium_rate,
+                coverage_period,
+                deductible,
+                status: InsuranceStatus::Active,
+                created_at: self.env().block_number() as u64,
+            };
+            
+            self.insurance_policies.insert(policy_id, &policy);
+            self.total_insurance_policies = policy_id;
+            
+            // Emit event
+            self.env().emit_event(InsurancePolicyCreated {
+                policy_id,
+                loan_id,
+                insured_amount,
+                premium_rate,
+                coverage_period,
+            });
+            
+            Ok(policy_id)
+        }
+        
+        /// Add fraud detection rule
+        #[ink(message)]
+        pub fn add_fraud_detection_rule(
+            &mut self,
+            rule_type: FraudRuleType,
+            threshold: u16,
+            action: FraudAction,
+            description: String,
+        ) -> Result<u64, LendingError> {
+            let caller = self.env().caller();
+            
+            // Only authorized admin can add fraud detection rules
+            if !self.is_authorized_admin(caller) {
+                return Err(LendingError::Unauthorized);
+            }
+            
+            let rule_id = self.total_fraud_rules + 1;
+            let rule = FraudDetectionRule {
+                rule_id,
+                rule_type,
+                threshold,
+                action,
+                is_active: true,
+                description,
+            };
+            
+            self.fraud_detection_rules.insert(rule_id, &rule);
+            self.total_fraud_rules = rule_id;
+            
+            Ok(rule_id)
+        }
+        
+        /// Check for fraud based on user activity
+        #[ink(message)]
+        pub fn check_fraud_detection(&mut self, user_id: AccountId) -> Result<Vec<String>, LendingError> {
+            let caller = self.env().caller();
+            
+            // Only authorized users can check fraud detection
+            if caller != user_id && !self.is_authorized_admin(caller) {
+                return Err(LendingError::Unauthorized);
+            }
+            
+            let mut fraud_alerts = Vec::new();
+            
+            // Check all active fraud detection rules
+            for rule_id in 1..=self.total_fraud_rules {
+                if let Some(rule) = self.fraud_detection_rules.get(rule_id) {
+                    if rule.is_active {
+                        match rule.rule_type {
+                            FraudRuleType::UnusualActivity => {
+                                if let Some(alert) = self.check_unusual_activity(user_id, rule.threshold) {
+                                    fraud_alerts.push(alert);
+                                    self.trigger_fraud_action(user_id, &rule)?;
+                                }
+                            }
+                            FraudRuleType::MultipleAccounts => {
+                                if let Some(alert) = self.check_multiple_accounts(user_id, rule.threshold) {
+                                    fraud_alerts.push(alert);
+                                    self.trigger_fraud_action(user_id, &rule)?;
+                                }
+                            }
+                            FraudRuleType::RapidTransactions => {
+                                if let Some(alert) = self.check_rapid_transactions(user_id, rule.threshold) {
+                                    fraud_alerts.push(alert);
+                                    self.trigger_fraud_action(user_id, &rule)?;
+                                }
+                            }
+                            FraudRuleType::AmountThreshold => {
+                                if let Some(alert) = self.check_amount_threshold(user_id, rule.threshold) {
+                                    fraud_alerts.push(alert);
+                                    self.trigger_fraud_action(user_id, &rule)?;
+                                }
+                            }
+                            _ => {} // Handle other rule types as needed
+                        }
+                    }
+                }
+            }
+            
+            Ok(fraud_alerts)
+        }
+        
+        /// Update compliance status for a user
+        #[ink(message)]
+        pub fn update_compliance_status(
+            &mut self,
+            user_id: AccountId,
+            compliance_type: ComplianceType,
+            status: ComplianceStatus,
+            documents: Vec<String>,
+        ) -> Result<(), LendingError> {
+            let caller = self.env().caller();
+            
+            // Only authorized admin can update compliance status
+            if !self.is_authorized_admin(caller) {
+                return Err(LendingError::Unauthorized);
+            }
+            
+            let current_records = self.compliance_records.get(user_id).unwrap_or_default();
+            let mut updated_records = current_records.clone();
+            
+            let record = ComplianceRecord {
+                record_id: updated_records.len() as u64 + 1,
+                user_id,
+                compliance_type,
+                status: status.clone(),
+                verification_date: self.env().block_number() as u64,
+                expiry_date: self.env().block_number() as u64 + 5184000, // 1 year
+                documents,
+            };
+            
+            updated_records.push(record);
+            self.compliance_records.insert(user_id, &updated_records);
+            
+            // Emit event
+            self.env().emit_event(ComplianceStatusUpdated {
+                user_id,
+                compliance_type: format!("{:?}", compliance_type),
+                old_status: "Unknown".to_string(),
+                new_status: format!("{:?}", status),
+                verification_date: self.env().block_number() as u64,
+            });
+            
+            Ok(())
+        }
+        
+        /// Get credit score information for a user
+        #[ink(message)]
+        pub fn get_credit_score_info(&self, user_id: AccountId) -> Result<(u16, String, Vec<(String, u16, String)>), LendingError> {
+            let credit_score = self.credit_scores.get(user_id).ok_or(LendingError::LoanNotFound)?;
+            
+            let factors: Vec<(String, u16, String)> = credit_score.factors.iter()
+                .map(|f| (
+                    format!("{:?}", f.factor_type),
+                    f.weight,
+                    f.description.clone()
+                ))
+                .collect();
+            
+            Ok((
+                credit_score.score,
+                format!("{:?}", credit_score.risk_level),
+                factors
+            ))
+        }
+        
+        /// Get collateral requirements for a loan
+        #[ink(message)]
+        pub fn get_collateral_requirements(&self, loan_id: u64) -> Result<Vec<(String, Balance, Balance, u16, u16)>, LendingError> {
+            let loan = self.loans.get(loan_id).ok_or(LendingError::LoanNotFound)?;
+            
+            let requirements: Vec<(String, Balance, Balance, u16, u16)> = loan.collateral_requirements.iter()
+                .map(|cr| (
+                    format!("{:?}", cr.collateral_type),
+                    cr.required_amount,
+                    cr.current_amount,
+                    cr.liquidation_threshold,
+                    cr.maintenance_margin
+                ))
+                .collect();
+            
+            Ok(requirements)
+        }
+        
+        // Helper functions for credit score calculation
+        fn calculate_payment_history_score(&self, user_id: AccountId) -> Result<u16, LendingError> {
+            // Simplified payment history calculation
+            // In a real implementation, this would analyze actual payment data
+            Ok(700) // Default score
+        }
+        
+        fn calculate_credit_utilization_score(&self, user_id: AccountId) -> Result<u16, LendingError> {
+            // Simplified credit utilization calculation
+            let user_profile = self.user_profiles.get(user_id).ok_or(LendingError::LoanNotFound)?;
+            
+            if user_profile.total_borrowed == 0 {
+                Ok(800) // No debt = excellent score
+            } else {
+                let utilization = (user_profile.total_borrowed * 10000) / user_profile.total_lent;
+                if utilization < 3000 { // < 30%
+                    Ok(750)
+                } else if utilization < 5000 { // < 50%
+                    Ok(650)
+                } else if utilization < 7000 { // < 70%
+                    Ok(550)
+                } else {
+                    Ok(400) // High utilization
+                }
+            }
+        }
+        
+        fn calculate_credit_history_score(&self, user_id: AccountId) -> Result<u16, LendingError> {
+            // Simplified credit history calculation
+            let user_profile = self.user_profiles.get(user_id).ok_or(LendingError::LoanNotFound)?;
+            
+            if user_profile.active_loans.len() > 5 {
+                Ok(800) // Long history
+            } else if user_profile.active_loans.len() > 2 {
+                Ok(600) // Medium history
+            } else {
+                Ok(400) // Short history
+            }
+        }
+        
+        fn calculate_new_credit_score(&self, user_id: AccountId) -> Result<u16, LendingError> {
+            // Simplified new credit calculation
+            Ok(600) // Default score
+        }
+        
+        fn calculate_credit_mix_score(&self, user_id: AccountId) -> Result<u16, LendingError> {
+            // Simplified credit mix calculation
+            Ok(650) // Default score
+        }
+        
+        fn determine_risk_level(&self, score: u16) -> RiskLevel {
+            match score {
+                750..=850 => RiskLevel::Excellent,
+                700..=749 => RiskLevel::Good,
+                650..=699 => RiskLevel::Fair,
+                600..=649 => RiskLevel::Poor,
+                _ => RiskLevel::VeryPoor,
+            }
+        }
+        
+        fn is_authorized_admin(&self, caller: AccountId) -> bool {
+            // Simplified admin check - in real implementation, this would check against admin list
+            caller == AccountId::from([1u8; 32]) // Alice as admin
+        }
+        
+        // Helper functions for fraud detection
+        fn check_unusual_activity(&self, user_id: AccountId, threshold: u16) -> Option<String> {
+            // Simplified unusual activity check
+            None // No unusual activity detected
+        }
+        
+        fn check_multiple_accounts(&self, user_id: AccountId, threshold: u16) -> Option<String> {
+            // Simplified multiple accounts check
+            None // No multiple accounts detected
+        }
+        
+        fn check_rapid_transactions(&self, user_id: AccountId, threshold: u16) -> Option<String> {
+            // Simplified rapid transactions check
+            None // No rapid transactions detected
+        }
+        
+        fn check_amount_threshold(&self, user_id: AccountId, threshold: u16) -> Option<String> {
+            // Simplified amount threshold check
+            None // No amount threshold violations
+        }
+        
+        fn trigger_fraud_action(&mut self, user_id: AccountId, rule: &FraudDetectionRule) -> Result<(), LendingError> {
+            // Emit fraud detection event
+            self.env().emit_event(FraudDetected {
+                user_id,
+                rule_type: format!("{:?}", rule.rule_type),
+                threshold: rule.threshold,
+                action: format!("{:?}", rule.action),
+                description: rule.description.clone(),
+            });
+            
+            Ok(())
         }
     }
 } 
