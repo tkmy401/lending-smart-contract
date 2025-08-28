@@ -397,23 +397,6 @@ fn main() {
     test::set_value_transferred::<DefaultEnvironment>(1000);
     contract.fund_loan(loan4_id).unwrap();
     
-    // Convert to monthly compound interest
-    test::set_caller::<DefaultEnvironment>(accounts.alice);
-    match contract.convert_to_compound_interest(loan4_id, CompoundFrequency::Monthly) {
-        Ok(_) => {
-            println!("   ✅ Successfully converted to monthly compound interest!");
-            let loan4 = contract.get_loan(loan4_id).unwrap();
-            println!("   Compound frequency: {:?}", loan4.compound_frequency);
-            println!("   Compound period: {} blocks ({} days)", loan4.compound_period_blocks, loan4.compound_period_blocks / 14400);
-            println!("   Initial balance: {}", loan4.amount);
-            println!("   Current remaining balance: {}", loan4.remaining_balance);
-        }
-        Err(e) => println!("   ❌ Failed to convert to monthly compound: {:?}", e),
-    }
-    
-    // Test 3: Calculate accrued interest
-    println!("\n3. Calculating Accrued Interest...");
-    
     let loan1 = contract.get_loan(1).unwrap();
     match contract.calculate_accrued_interest(1) {
         Ok(accrued) => {
