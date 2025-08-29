@@ -4,8 +4,9 @@ use ink_prelude::vec::Vec;
 use crate::types::{
     Loan, LoanStatus, UserProfile, PartialPayment, PaymentType, RefinanceRecord,
     InterestRateType, InterestRateAdjustment, RateAdjustmentReason, InterestType, CompoundFrequency, PaymentStructure,
-    GracePeriodReason, GracePeriodRecord, LiquidityPool, PoolStatus, LiquidityProvider, RewardToken, StakingRequirements, TierMultiplier, StakingPosition,
+    GracePeriodReason, GracePeriodRecord, LiquidityPool, PoolStatus, LiquidityProvider, RewardToken, StakingRequirements, TierMultiplier,
     MarketDepthLevel, OptimalDistribution, ConcentrationLimits, CollateralType, CollateralRequirement, InsurancePolicy, InsuranceStatus, FraudDetectionRule, FraudRuleType, FraudAction, ComplianceRecord, ComplianceStatus, ComplianceType, CreditScore, CreditFactor, CreditFactorType, CreditScoreRecord, RiskLevel,
+    MarketStatistics, MarketTrend, LoanPerformanceMetrics, PortfolioAnalytics, HistoricalDataPoint, PerformanceBenchmark, BenchmarkCategory, AnalyticsReport, ReportType, AnalyticsMetric, MetricTrend,
 };
 use crate::errors::LendingError;
 
@@ -55,6 +56,17 @@ pub mod lending_contract {
         total_fraud_rules: u64,
         compliance_records: Mapping<AccountId, Vec<ComplianceRecord>>,
         credit_scores: Mapping<AccountId, CreditScore>,
+        // Analytics & Reporting (Phase 5)
+        total_loan_metrics: u64,
+        loan_performance_metrics: Mapping<u64, LoanPerformanceMetrics>,
+        user_portfolio_analytics: Mapping<AccountId, PortfolioAnalytics>,
+        market_statistics: MarketStatistics,
+        historical_data: Vec<HistoricalDataPoint>,
+        total_benchmarks: u64,
+        performance_benchmarks: Mapping<u64, PerformanceBenchmark>,
+        total_analytics_reports: u64,
+        analytics_reports: Mapping<u64, AnalyticsReport>,
+        total_users: u64, // Track total user count
     }
 
     // ============================================================================
@@ -344,6 +356,55 @@ pub mod lending_contract {
         verification_date: u64,
     }
 
+    // ============================================================================
+    // ANALYTICS & REPORTING EVENTS (Phase 5)
+    // ============================================================================
+
+    #[ink(event)]
+    pub struct LoanMetricsUpdated {
+        #[ink(topic)]
+        loan_id: u64,
+        borrower: AccountId,
+        performance_score: u16,
+        payment_efficiency: u16,
+        risk_adjusted_return: u16,
+    }
+
+    #[ink(event)]
+    pub struct PortfolioAnalyticsUpdated {
+        #[ink(topic)]
+        user_id: AccountId,
+        portfolio_value: Balance,
+        diversification_score: u16,
+        risk_concentration: u16,
+    }
+
+    #[ink(event)]
+    pub struct MarketStatisticsUpdated {
+        total_market_cap: Balance,
+        active_loans: u64,
+        average_rate: u16,
+        market_trend: String,
+    }
+
+    #[ink(event)]
+    pub struct AnalyticsReportGenerated {
+        #[ink(topic)]
+        report_id: u64,
+        report_type: String,
+        generated_at: u64,
+        metrics_count: u32,
+    }
+
+    #[ink(event)]
+    pub struct PerformanceBenchmarkUpdated {
+        #[ink(topic)]
+        benchmark_id: u64,
+        name: String,
+        current_score: u16,
+        target_score: u16,
+    }
+
     impl LendingContract {
         // ============================================================================
         // CONSTRUCTOR
@@ -359,16 +420,37 @@ pub mod lending_contract {
                 total_liquidity: 0,
                 protocol_fee: 50, // 0.5%
                 min_collateral_ratio: 150, // 150%
-                            total_pools: 0,
-            liquidity_pools: Mapping::default(),
-            pool_liquidity_providers: Mapping::default(),
-            // Risk Management & Security
-            total_insurance_policies: 0,
-            insurance_policies: Mapping::default(),
-            fraud_detection_rules: Mapping::default(),
-            total_fraud_rules: 0,
-            compliance_records: Mapping::default(),
-            credit_scores: Mapping::default(),
+                total_pools: 0,
+                liquidity_pools: Mapping::default(),
+                pool_liquidity_providers: Mapping::default(),
+                // Risk Management & Security
+                total_insurance_policies: 0,
+                insurance_policies: Mapping::default(),
+                fraud_detection_rules: Mapping::default(),
+                total_fraud_rules: 0,
+                compliance_records: Mapping::default(),
+                credit_scores: Mapping::default(),
+                // Analytics & Reporting (Phase 5)
+                total_loan_metrics: 0,
+                loan_performance_metrics: Mapping::default(),
+                user_portfolio_analytics: Mapping::default(),
+                market_statistics: MarketStatistics {
+                    total_market_cap: 0,
+                    total_active_loans: 0,
+                    average_interest_rate: 0,
+                    market_volatility: 0,
+                    liquidity_depth: 0,
+                    default_rate: 0,
+                    utilization_rate: 0,
+                    market_trend: MarketTrend::Stable,
+                    last_updated: 0,
+                },
+                historical_data: Vec::new(),
+                total_benchmarks: 0,
+                performance_benchmarks: Mapping::default(),
+                total_analytics_reports: 0,
+                analytics_reports: Mapping::default(),
+                total_users: 0, // Track total user count
             }
         }
 
@@ -400,10 +482,16 @@ pub mod lending_contract {
                 return Err(LendingError::InvalidDuration);
             }
 
-            // Check if user is blacklisted
+            // Check if user is blacklisted and track new users
+            let is_new_user = !self.user_profiles.contains(caller);
             let user_profile = self.get_or_create_user_profile(caller);
             if user_profile.is_blacklisted {
                 return Err(LendingError::UserBlacklisted);
+            }
+            
+            // Increment user count for new users
+            if is_new_user {
+                self.total_users += 1;
             }
 
             // Validate collateral ratio
@@ -2157,6 +2245,8 @@ pub mod lending_contract {
             })
         }
 
+
+
         /// Calculate repayment amount for a loan
         fn calculate_repayment_amount(&self, loan_id: u64) -> Result<Balance, LendingError> {
             let loan = self.loans.get(loan_id).ok_or(LendingError::LoanNotFound)?;
@@ -3248,6 +3338,514 @@ pub mod lending_contract {
             });
             
             Ok(())
+        }
+
+        // ============================================================================
+        // ANALYTICS & REPORTING FUNCTIONS (Phase 5)
+        // ============================================================================
+
+        /// Calculate and update loan performance metrics
+        #[ink(message)]
+        pub fn update_loan_metrics(&mut self, loan_id: u64) -> Result<(), LendingError> {
+            let loan = self.loans.get(loan_id).ok_or(LendingError::LoanNotFound)?;
+            let current_block = self.env().block_number() as u64;
+            
+            // Calculate performance metrics
+            let total_interest_paid = loan.total_paid.saturating_sub(loan.amount);
+            let total_fees_paid = loan.total_late_fees + 
+                (loan.extension_count as u128 * loan.extension_fee_rate as u128 * loan.amount / 10000) +
+                (loan.refinance_count as u128 * loan.refinance_fee_rate as u128 * loan.amount / 10000);
+            
+            let days_to_repayment = if loan.status == LoanStatus::Repaid || loan.status == LoanStatus::EarlyRepaid {
+                current_block.saturating_sub(loan.created_at)
+            } else {
+                0
+            };
+            
+            let payment_efficiency = if loan.total_paid > 0 {
+                let expected_total = loan.amount + (loan.amount * loan.interest_rate as u128 / 10000);
+                ((loan.total_paid * 10000) / expected_total) as u16
+            } else {
+                0
+            };
+            
+            let risk_adjusted_return = if loan.credit_score.is_some() {
+                let credit_score = loan.credit_score.as_ref().unwrap();
+                let risk_factor = match credit_score.risk_level {
+                    RiskLevel::Excellent => 10000,
+                    RiskLevel::Good => 8500,
+                    RiskLevel::Fair => 7000,
+                    RiskLevel::Poor => 5500,
+                    RiskLevel::VeryPoor => 4000,
+                };
+                (risk_factor * loan.interest_rate as u32 / 10000) as u16
+            } else {
+                loan.interest_rate
+            };
+            
+            let collateral_utilization = if loan.collateral > 0 {
+                ((loan.amount * 10000) / loan.collateral) as u16
+            } else {
+                0
+            };
+            
+            let performance_score = (payment_efficiency + risk_adjusted_return + (10000 - collateral_utilization)) / 3;
+            
+            let metrics = LoanPerformanceMetrics {
+                loan_id,
+                borrower: loan.borrower,
+                total_interest_paid,
+                total_fees_paid,
+                average_daily_balance: loan.amount, // Simplified calculation
+                days_to_repayment,
+                payment_efficiency,
+                risk_adjusted_return,
+                collateral_utilization,
+                late_payment_count: 0, // Would need to track this separately
+                extension_count: loan.extension_count,
+                refinance_count: loan.refinance_count,
+                performance_score,
+                last_updated: current_block,
+            };
+            
+            self.loan_performance_metrics.insert(loan_id, &metrics);
+            self.total_loan_metrics += 1;
+            
+            // Emit event
+            self.env().emit_event(LoanMetricsUpdated {
+                loan_id,
+                borrower: loan.borrower,
+                performance_score,
+                payment_efficiency,
+                risk_adjusted_return,
+            });
+            
+            Ok(())
+        }
+
+        /// Calculate and update user portfolio analytics
+        #[ink(message)]
+        pub fn update_portfolio_analytics(&mut self, user_id: AccountId) -> Result<(), LendingError> {
+            let user_profile = self.user_profiles.get(user_id).ok_or(LendingError::UserNotFound)?;
+            let current_block = self.env().block_number() as u64;
+            
+            // Calculate portfolio metrics
+            let total_portfolio_value = user_profile.total_borrowed + user_profile.total_lent;
+            let active_loans_count = user_profile.active_loans.len() as u32;
+            
+            // Simplified calculations - in real implementation would analyze actual loan data
+            let completed_loans_count = if user_profile.total_borrowed > 0 { 1 } else { 0 };
+            let defaulted_loans_count = 0; // Would need to track defaults
+            let average_loan_size = if active_loans_count > 0 {
+                user_profile.total_borrowed / active_loans_count as u128
+            } else {
+                0
+            };
+            
+            let portfolio_diversification_score = if active_loans_count > 1 { 8000 } else { 4000 };
+            let risk_concentration = if user_profile.total_borrowed > user_profile.total_lent { 7000 } else { 3000 };
+            let expected_return = 6000; // Simplified calculation
+            let volatility_score = 5000; // Simplified calculation
+            let liquidity_score = if user_profile.total_lent > 0 { 8000 } else { 4000 };
+            
+            let analytics = PortfolioAnalytics {
+                user_id,
+                total_portfolio_value,
+                active_loans_count,
+                completed_loans_count,
+                defaulted_loans_count,
+                average_loan_size,
+                portfolio_diversification_score,
+                risk_concentration,
+                expected_return,
+                volatility_score,
+                liquidity_score,
+                last_updated: current_block,
+            };
+            
+            self.user_portfolio_analytics.insert(user_id, &analytics);
+            
+            // Emit event
+            self.env().emit_event(PortfolioAnalyticsUpdated {
+                user_id,
+                portfolio_value: total_portfolio_value,
+                diversification_score: portfolio_diversification_score,
+                risk_concentration,
+            });
+            
+            Ok(())
+        }
+
+        /// Update market statistics
+        #[ink(message)]
+        pub fn update_market_statistics(&mut self) -> Result<(), LendingError> {
+            let current_block = self.env().block_number() as u64;
+            
+            // Calculate market metrics
+            let total_market_cap = self.total_liquidity;
+            let total_active_loans = self.total_loans;
+            
+            // Calculate average interest rate from active loans
+            let mut total_rate = 0u32;
+            let mut active_loan_count = 0u32;
+            
+            for i in 1..=self.total_loans {
+                if let Some(loan) = self.loans.get(i) {
+                    if loan.status == LoanStatus::Active {
+                        total_rate += loan.interest_rate as u32;
+                        active_loan_count += 1;
+                    }
+                }
+            }
+            
+            let average_interest_rate = if active_loan_count > 0 {
+                (total_rate / active_loan_count) as u16
+            } else {
+                0
+            };
+            
+            // Simplified market metrics
+            let market_volatility = 5000; // 50% - would need historical data
+            let liquidity_depth = if self.total_liquidity > 0 { 7000 } else { 3000 };
+            let default_rate = 500; // 5% - would need actual default tracking
+            let utilization_rate = if self.total_liquidity > 0 {
+                ((self.total_loans as u128 * 10000) / self.total_liquidity) as u16
+            } else {
+                0
+            };
+            
+            let market_trend = if average_interest_rate > 1000 { MarketTrend::Bullish } else { MarketTrend::Stable };
+            
+            let new_stats = MarketStatistics {
+                total_market_cap,
+                total_active_loans,
+                average_interest_rate,
+                market_volatility,
+                liquidity_depth,
+                default_rate,
+                utilization_rate,
+                market_trend,
+                last_updated: current_block,
+            };
+            
+            self.market_statistics = new_stats;
+            
+            // Add to historical data
+            let historical_point = HistoricalDataPoint {
+                timestamp: current_block,
+                total_loans: self.total_loans,
+                total_volume: self.total_liquidity,
+                average_rate: average_interest_rate,
+                default_count: 0, // Would need to track defaults
+                active_users: self.total_users as u32,
+            };
+            
+            self.historical_data.push(historical_point);
+            
+            // Emit event
+            self.env().emit_event(MarketStatisticsUpdated {
+                total_market_cap,
+                active_loans: total_active_loans,
+                average_rate: average_interest_rate,
+                market_trend: format!("{:?}", market_trend),
+            });
+            
+            Ok(())
+        }
+
+        /// Create a new performance benchmark
+        #[ink(message)]
+        pub fn create_performance_benchmark(
+            &mut self,
+            name: String,
+            category: BenchmarkCategory,
+            target_score: u16,
+            weight: u16,
+        ) -> Result<u64, LendingError> {
+            if !self.is_authorized_admin(self.env().caller()) {
+                return Err(LendingError::Unauthorized);
+            }
+            
+            let benchmark_id = self.total_benchmarks + 1;
+            let current_block = self.env().block_number() as u64;
+            
+            let benchmark = PerformanceBenchmark {
+                benchmark_id,
+                name: name.clone(),
+                category,
+                target_score,
+                current_score: 0,
+                weight,
+                last_updated: current_block,
+            };
+            
+            self.performance_benchmarks.insert(benchmark_id, &benchmark);
+            self.total_benchmarks += 1;
+            
+            Ok(benchmark_id)
+        }
+
+        /// Update benchmark scores
+        #[ink(message)]
+        pub fn update_benchmark_scores(&mut self) -> Result<(), LendingError> {
+            if !self.is_authorized_admin(self.env().caller()) {
+                return Err(LendingError::Unauthorized);
+            }
+            
+            let current_block = self.env().block_number() as u64;
+            
+            for i in 1..=self.total_benchmarks {
+                if let Some(mut benchmark) = self.performance_benchmarks.get(i) {
+                    // Calculate current score based on category
+                    let current_score = match benchmark.category {
+                        BenchmarkCategory::LoanPerformance => self.calculate_loan_performance_score(),
+                        BenchmarkCategory::RiskManagement => self.calculate_risk_management_score(),
+                        BenchmarkCategory::LiquidityEfficiency => self.calculate_liquidity_efficiency_score(),
+                        BenchmarkCategory::UserExperience => self.calculate_user_experience_score(),
+                        BenchmarkCategory::Compliance => self.calculate_compliance_score(),
+                        BenchmarkCategory::Overall => self.calculate_overall_score(),
+                    };
+                    
+                    benchmark.current_score = current_score;
+                    benchmark.last_updated = current_block;
+                    
+                    self.performance_benchmarks.insert(i, &benchmark);
+                    
+                    // Emit event
+                    self.env().emit_event(PerformanceBenchmarkUpdated {
+                        benchmark_id: i,
+                        name: benchmark.name.clone(),
+                        current_score,
+                        target_score: benchmark.target_score,
+                    });
+                }
+            }
+            
+            Ok(())
+        }
+
+        /// Generate analytics report
+        #[ink(message)]
+        pub fn generate_analytics_report(&mut self, report_type: ReportType, data_period: u64) -> Result<u64, LendingError> {
+            if !self.is_authorized_admin(self.env().caller()) {
+                return Err(LendingError::Unauthorized);
+            }
+            
+            let report_id = self.total_analytics_reports + 1;
+            let current_block = self.env().block_number() as u64;
+            
+            // Generate report metrics
+            let mut metrics = Vec::new();
+            
+            // Market metrics
+            metrics.push(AnalyticsMetric {
+                name: "Total Market Cap".to_string(),
+                value: format!("{}", self.market_statistics.total_market_cap),
+                unit: "Wei".to_string(),
+                change_from_previous: 0,
+                trend: MetricTrend::Stable,
+            });
+            
+            metrics.push(AnalyticsMetric {
+                name: "Active Loans".to_string(),
+                value: format!("{}", self.market_statistics.total_active_loans),
+                unit: "Count".to_string(),
+                change_from_previous: 0,
+                trend: MetricTrend::Stable,
+            });
+            
+            metrics.push(AnalyticsMetric {
+                name: "Average Interest Rate".to_string(),
+                value: format!("{:.2}%", self.market_statistics.average_interest_rate as f64 / 100.0),
+                unit: "Percentage".to_string(),
+                change_from_previous: 0,
+                trend: MetricTrend::Stable,
+            });
+            
+            // Generate summary and recommendations
+            let summary = format!("Analytics report for {:?} period ending at block {}", report_type, current_block);
+            let recommendations = vec![
+                "Monitor market volatility trends".to_string(),
+                "Review risk management parameters".to_string(),
+                "Optimize liquidity distribution".to_string(),
+            ];
+            
+            let report = AnalyticsReport {
+                report_id,
+                report_type: report_type.clone(),
+                generated_at: current_block,
+                data_period,
+                summary,
+                metrics,
+                recommendations,
+            };
+            
+            self.analytics_reports.insert(report_id, &report);
+            self.total_analytics_reports += 1;
+            
+            // Emit event
+            self.env().emit_event(AnalyticsReportGenerated {
+                report_id,
+                report_type: format!("{:?}", report_type),
+                generated_at: current_block,
+                metrics_count: report.metrics.len() as u32,
+            });
+            
+            Ok(report_id)
+        }
+
+        // ============================================================================
+        // ANALYTICS HELPER FUNCTIONS
+        // ============================================================================
+
+        fn calculate_loan_performance_score(&self) -> u16 {
+            // Simplified calculation based on loan metrics
+            let mut total_score = 0u32;
+            let mut count = 0u32;
+            
+            for i in 1..=self.total_loan_metrics {
+                if let Some(metrics) = self.loan_performance_metrics.get(i) {
+                    total_score += metrics.performance_score as u32;
+                    count += 1;
+                }
+            }
+            
+            if count > 0 {
+                (total_score / count) as u16
+            } else {
+                5000 // Default 50%
+            }
+        }
+
+        fn calculate_risk_management_score(&self) -> u16 {
+            // Simplified risk management score
+            let default_rate = self.market_statistics.default_rate;
+            let volatility = self.market_statistics.market_volatility;
+            
+            // Lower default rate and volatility = higher score
+            let score = 10000 - (default_rate + volatility) / 2;
+            score.max(1000).min(10000) // Ensure score is between 10% and 100%
+        }
+
+        fn calculate_liquidity_efficiency_score(&self) -> u16 {
+            // Simplified liquidity efficiency score
+            let utilization = self.market_statistics.utilization_rate;
+            let depth = self.market_statistics.liquidity_depth;
+            
+            // Optimal utilization around 70-80%
+            let utilization_score = if utilization >= 7000 && utilization <= 8000 {
+                10000
+            } else if utilization >= 5000 && utilization <= 9000 {
+                8000
+            } else {
+                6000
+            };
+            
+            (utilization_score + depth) / 2
+        }
+
+        fn calculate_user_experience_score(&self) -> u16 {
+            // Simplified user experience score
+            let total_users = self.total_users;
+            let active_loans = self.market_statistics.total_active_loans;
+            
+            if total_users == 0 {
+                return 5000;
+            }
+            
+            let activity_rate = ((active_loans as u32 * 10000) / total_users as u32) as u16;
+            activity_rate.min(10000)
+        }
+
+        fn calculate_compliance_score(&self) -> u16 {
+            // Simplified compliance score
+            8500 // Default high score - would need actual compliance tracking
+        }
+
+        fn calculate_overall_score(&self) -> u16 {
+            let scores = vec![
+                self.calculate_loan_performance_score(),
+                self.calculate_risk_management_score(),
+                self.calculate_liquidity_efficiency_score(),
+                self.calculate_user_experience_score(),
+                self.calculate_compliance_score(),
+            ];
+            
+            let total: u32 = scores.iter().map(|&s| s as u32).sum();
+            (total / scores.len() as u32) as u16
+        }
+
+        // ============================================================================
+        // ANALYTICS QUERY FUNCTIONS
+        // ============================================================================
+
+        /// Get loan performance metrics
+        #[ink(message)]
+        pub fn get_loan_metrics(&self, loan_id: u64) -> Result<LoanPerformanceMetrics, LendingError> {
+            self.loan_performance_metrics.get(loan_id).ok_or(LendingError::LoanNotFound)
+        }
+
+        /// Get user portfolio analytics
+        #[ink(message)]
+        pub fn get_portfolio_analytics(&self, user_id: AccountId) -> Result<PortfolioAnalytics, LendingError> {
+            self.user_portfolio_analytics.get(user_id).ok_or(LendingError::UserNotFound)
+        }
+
+        /// Get current market statistics
+        #[ink(message)]
+        pub fn get_market_statistics(&self) -> MarketStatistics {
+            self.market_statistics.clone()
+        }
+
+        /// Get performance benchmarks
+        #[ink(message)]
+        pub fn get_performance_benchmarks(&self) -> Vec<PerformanceBenchmark> {
+            let mut benchmarks = Vec::new();
+            for i in 1..=self.total_benchmarks {
+                if let Some(benchmark) = self.performance_benchmarks.get(i) {
+                    benchmarks.push(benchmark);
+                }
+            }
+            benchmarks
+        }
+
+        /// Get analytics report
+        #[ink(message)]
+        pub fn get_analytics_report(&self, report_id: u64) -> Result<AnalyticsReport, LendingError> {
+            self.analytics_reports.get(report_id).ok_or(LendingError::LoanNotFound)
+        }
+
+        /// Get historical data points
+        #[ink(message)]
+        pub fn get_historical_data(&self, limit: u32) -> Vec<HistoricalDataPoint> {
+            let mut data = self.historical_data.clone();
+            data.sort_by(|a, b| b.timestamp.cmp(&a.timestamp)); // Sort by newest first
+            data.truncate(limit as usize);
+            data
+        }
+
+        /// Get total loan metrics count
+        #[ink(message)]
+        pub fn get_total_loan_metrics(&self) -> u64 {
+            self.total_loan_metrics
+        }
+
+        /// Get total benchmarks count
+        #[ink(message)]
+        pub fn get_total_benchmarks(&self) -> u64 {
+            self.total_benchmarks
+        }
+
+        /// Get total analytics reports count
+        #[ink(message)]
+        pub fn get_total_analytics_reports(&self) -> u64 {
+            self.total_analytics_reports
+        }
+
+        /// Get historical data count
+        #[ink(message)]
+        pub fn get_historical_data_count(&self) -> u32 {
+            self.historical_data.len() as u32
         }
     }
 } 
