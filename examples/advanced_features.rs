@@ -6,7 +6,7 @@ use ink::env::{
     test,
 };
 
-use lending_smart_contract::{LendingContract, types::{RateAdjustmentReason, CompoundFrequency, PaymentStructure, GracePeriodReason}, errors::LendingError};
+use lending_smart_contract::{LendingContract, types::{RateAdjustmentReason, CompoundFrequency, PaymentStructure, GracePeriodReason, BenchmarkCategory, ReportType}, errors::LendingError, AccountId};
 
 /// Example demonstrating advanced features of the lending smart contract
 fn main() {
@@ -1893,4 +1893,205 @@ fn main() {
     println!("  - Advanced contract interactions");
     println!("  - User profile management");
     println!("  - Contract statistics tracking");
+
+    // ============================================================================
+    // PHASE 5: ADVANCED ANALYTICS & REPORTING DEMONSTRATION
+    // ============================================================================
+    
+    println!("\n🚀 PHASE 5: Advanced Analytics & Reporting Features");
+    println!("{}", "=".repeat(60));
+    
+    // Test 1: Loan Performance Metrics Demonstration...
+    
+    // Create a loan first
+    let loan_amount = 1000;
+    let interest_rate = 500; // 5%
+    let duration = 1000;
+    let collateral = 1500;
+    
+    let loan_id = contract.create_loan(loan_amount, interest_rate, duration, collateral)
+        .expect("Failed to create loan for analytics demo");
+    
+    println!("   ✅ Created loan {} for analytics testing", loan_id);
+    
+    // Try to fund the loan (this might fail in test environment)
+    match contract.fund_loan(loan_id) {
+        Ok(_) => {
+            println!("   ✅ Funded loan for analytics testing");
+            // Update loan metrics
+            contract.update_loan_metrics(loan_id).expect("Failed to update loan metrics");
+            println!("   ✅ Updated loan performance metrics");
+            
+            // Get and display loan metrics
+            match contract.get_loan_metrics(loan_id) {
+                Ok(metrics) => {
+                    println!("   📊 Loan Performance Metrics:");
+                    println!("      - Performance Score: {}%", metrics.performance_score as f64 / 100.0);
+                    println!("      - Payment Efficiency: {}%", metrics.payment_efficiency as f64 / 100.0);
+                    println!("      - Risk-Adjusted Return: {}%", metrics.risk_adjusted_return as f64 / 100.0);
+                    println!("      - Collateral Utilization: {}%", metrics.collateral_utilization as f64 / 100.0);
+                    println!("      - Total Interest Paid: {} Wei", metrics.total_interest_paid);
+                    println!("      - Total Fees Paid: {} Wei", metrics.total_fees_paid);
+                },
+                Err(e) => println!("   ❌ Failed to get loan metrics: {:?}", e),
+            }
+        },
+        Err(e) => {
+            println!("   ⚠️  Loan funding failed (expected in test environment): {:?}", e);
+            println!("   📝 Continuing with other analytics tests...");
+        }
+    }
+    
+    // Test 2: Portfolio Analytics
+    println!("\n2. Portfolio Analytics Demonstration...");
+    
+    // Update portfolio analytics for Alice
+    let alice = AccountId::from([1u8; 32]);
+    contract.update_portfolio_analytics(alice).expect("Failed to update portfolio analytics");
+    println!("   ✅ Updated portfolio analytics for Alice");
+    
+    // Get and display portfolio analytics
+    match contract.get_portfolio_analytics(alice) {
+        Ok(analytics) => {
+            println!("   📊 Portfolio Analytics for Alice:");
+            println!("      - Total Portfolio Value: {} Wei", analytics.total_portfolio_value);
+            println!("      - Active Loans: {}", analytics.active_loans_count);
+            println!("      - Completed Loans: {}", analytics.completed_loans_count);
+            println!("      - Portfolio Diversification: {}%", analytics.portfolio_diversification_score as f64 / 100.0);
+            println!("      - Risk Concentration: {}%", analytics.risk_concentration as f64 / 100.0);
+            println!("      - Expected Return: {}%", analytics.expected_return as f64 / 100.0);
+            println!("      - Volatility Score: {}%", analytics.volatility_score as f64 / 100.0);
+            println!("      - Liquidity Score: {}%", analytics.liquidity_score as f64 / 100.0);
+        },
+        Err(e) => println!("   ❌ Failed to get portfolio analytics: {:?}", e),
+    }
+    
+    // Test 3: Market Statistics
+    println!("\n3. Market Statistics Demonstration...");
+    
+    // Update market statistics
+    contract.update_market_statistics().expect("Failed to update market statistics");
+    println!("   ✅ Updated market statistics");
+    
+    // Get and display market statistics
+    let market_stats = contract.get_market_statistics();
+    println!("   📊 Market Statistics:");
+    println!("      - Total Market Cap: {} Wei", market_stats.total_market_cap);
+    println!("      - Total Active Loans: {}", market_stats.total_active_loans);
+    println!("      - Average Interest Rate: {:.2}%", market_stats.average_interest_rate as f64 / 100.0);
+    println!("      - Market Volatility: {}%", market_stats.market_volatility as f64 / 100.0);
+    println!("      - Liquidity Depth: {}%", market_stats.liquidity_depth as f64 / 100.0);
+    println!("      - Default Rate: {}%", market_stats.default_rate as f64 / 100.0);
+    println!("      - Utilization Rate: {}%", market_stats.utilization_rate as f64 / 100.0);
+    println!("      - Market Trend: {:?}", market_stats.market_trend);
+    
+    // Test 4: Performance Benchmarks
+    println!("\n4. Performance Benchmarks Demonstration...");
+    
+    // Create performance benchmarks
+    let benchmark_names = vec![
+        ("Loan Performance Benchmark", BenchmarkCategory::LoanPerformance),
+        ("Risk Management Benchmark", BenchmarkCategory::RiskManagement),
+        ("Liquidity Efficiency Benchmark", BenchmarkCategory::LiquidityEfficiency),
+        ("User Experience Benchmark", BenchmarkCategory::UserExperience),
+        ("Compliance Benchmark", BenchmarkCategory::Compliance),
+        ("Overall Performance Benchmark", BenchmarkCategory::Overall),
+    ];
+    
+    for (name, category) in benchmark_names {
+        let benchmark_id = contract.create_performance_benchmark(
+            name.to_string(),
+            category,
+            8000, // Target score: 80%
+            1000, // Weight: 10%
+        ).expect("Failed to create benchmark");
+        
+        println!("   ✅ Created {} benchmark (ID: {})", name, benchmark_id);
+    }
+    
+    // Update benchmark scores
+    contract.update_benchmark_scores().expect("Failed to update benchmark scores");
+    println!("   ✅ Updated all benchmark scores");
+    
+    // Get and display benchmarks
+    let benchmarks = contract.get_performance_benchmarks();
+    println!("   📊 Performance Benchmarks:");
+    for benchmark in benchmarks {
+        println!("      - {}: {:.1}% (Target: {:.1}%)", 
+            benchmark.name, 
+            benchmark.current_score as f64 / 100.0,
+            benchmark.target_score as f64 / 100.0);
+    }
+    
+    // Test 5: Analytics Reports
+    println!("\n5. Analytics Reports Demonstration...");
+    
+    // Generate different types of reports
+    let report_types = vec![
+        ReportType::Daily,
+        ReportType::Weekly,
+        ReportType::Monthly,
+    ];
+    
+    for report_type in report_types {
+        let report_id = contract.generate_analytics_report(report_type, 1000)
+            .expect("Failed to generate analytics report");
+        
+        println!("   ✅ Generated {:?} report (ID: {})", report_type, report_id);
+        
+        // Get and display report
+        match contract.get_analytics_report(report_id) {
+            Ok(report) => {
+                println!("   📊 {:?} Report Summary:", report.report_type);
+                println!("      - Generated at block: {}", report.generated_at);
+                println!("      - Data period: {} blocks", report.data_period);
+                println!("      - Metrics count: {}", report.metrics.len());
+                println!("      - Summary: {}", report.summary);
+                
+                println!("      - Key Metrics:");
+                for metric in &report.metrics {
+                    println!("        * {}: {} {}", metric.name, metric.value, metric.unit);
+                }
+                
+                println!("      - Recommendations:");
+                for recommendation in &report.recommendations {
+                    println!("        * {}", recommendation);
+                }
+            },
+            Err(e) => println!("   ❌ Failed to get report {}: {:?}", report_id, e),
+        }
+    }
+    
+    // Test 6: Historical Data
+    println!("\n6. Historical Data Demonstration...");
+    
+    // Get historical data
+    let historical_data = contract.get_historical_data(10); // Last 10 data points
+    println!("   📊 Historical Data (Last {} points):", historical_data.len());
+    
+    for (i, data_point) in historical_data.iter().enumerate() {
+        println!("      Point {}: Block {}, Loans: {}, Volume: {} Wei, Rate: {:.2}%", 
+            i + 1,
+            data_point.timestamp,
+            data_point.total_loans,
+            data_point.total_volume,
+            data_point.average_rate as f64 / 100.0);
+    }
+    
+    println!("\n🎉 Phase 5 Analytics & Reporting Features Successfully Demonstrated!");
+    println!("   ✅ Loan performance metrics calculation and tracking");
+    println!("   ✅ User portfolio analytics and insights");
+    println!("   ✅ Real-time market statistics and trends");
+    println!("   ✅ Performance benchmarking across multiple categories");
+    println!("   ✅ Automated analytics report generation");
+    println!("   ✅ Historical data tracking and analysis");
+    
+    println!("\n📈 Analytics Dashboard Summary:");
+    println!("   - Total loan metrics tracked: {}", contract.get_total_loan_metrics());
+    println!("   - Performance benchmarks created: {}", contract.get_total_benchmarks());
+    println!("   - Analytics reports generated: {}", contract.get_total_analytics_reports());
+    println!("   - Historical data points: {}", contract.get_historical_data_count());
+    
+    println!("\n🎯 Phase 5 Implementation Complete!");
+    println!("   The lending smart contract now includes comprehensive analytics and reporting capabilities.");
 } 

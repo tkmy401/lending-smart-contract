@@ -475,3 +475,142 @@ pub enum ComplianceStatus {
 pub type AccountId = <ink_env::DefaultEnvironment as ink_env::Environment>::AccountId;
 pub type Balance = <ink_env::DefaultEnvironment as ink_env::Environment>::Balance;
 pub type BlockNumber = u64; 
+
+// ============================================================================
+// ANALYTICS & REPORTING STRUCTURES (Phase 5)
+// ============================================================================
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub struct LoanPerformanceMetrics {
+    pub loan_id: u64,
+    pub borrower: AccountId,
+    pub total_interest_paid: Balance,
+    pub total_fees_paid: Balance,
+    pub average_daily_balance: Balance,
+    pub days_to_repayment: u64,
+    pub payment_efficiency: u16, // 0-10000 (0-100%)
+    pub risk_adjusted_return: u16, // 0-10000 (0-100%)
+    pub collateral_utilization: u16, // 0-10000 (0-100%)
+    pub late_payment_count: u32,
+    pub extension_count: u32,
+    pub refinance_count: u32,
+    pub performance_score: u16, // 0-10000 (0-100%)
+    pub last_updated: u64,
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub struct PortfolioAnalytics {
+    pub user_id: AccountId,
+    pub total_portfolio_value: Balance,
+    pub active_loans_count: u32,
+    pub completed_loans_count: u32,
+    pub defaulted_loans_count: u32,
+    pub average_loan_size: Balance,
+    pub portfolio_diversification_score: u16, // 0-10000 (0-100%)
+    pub risk_concentration: u16, // 0-10000 (0-100%)
+    pub expected_return: u16, // 0-10000 (0-100%)
+    pub volatility_score: u16, // 0-10000 (0-100%)
+    pub liquidity_score: u16, // 0-10000 (0-100%)
+    pub last_updated: u64,
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub struct MarketStatistics {
+    pub total_market_cap: Balance,
+    pub total_active_loans: u64,
+    pub average_interest_rate: u16,
+    pub market_volatility: u16, // 0-10000 (0-100%)
+    pub liquidity_depth: u16, // 0-10000 (0-100%)
+    pub default_rate: u16, // 0-10000 (0-100%)
+    pub utilization_rate: u16, // 0-10000 (0-100%)
+    pub market_trend: MarketTrend,
+    pub last_updated: u64,
+}
+
+#[derive(Debug, Clone, Copy, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub enum MarketTrend {
+    Bullish,
+    Bearish,
+    Stable,
+    Volatile,
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub struct HistoricalDataPoint {
+    pub timestamp: u64,
+    pub total_loans: u64,
+    pub total_volume: Balance,
+    pub average_rate: u16,
+    pub default_count: u32,
+    pub active_users: u32,
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub struct PerformanceBenchmark {
+    pub benchmark_id: u64,
+    pub name: String,
+    pub category: BenchmarkCategory,
+    pub target_score: u16,
+    pub current_score: u16,
+    pub weight: u16, // 0-10000 (0-100%)
+    pub last_updated: u64,
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub enum BenchmarkCategory {
+    LoanPerformance,
+    RiskManagement,
+    LiquidityEfficiency,
+    UserExperience,
+    Compliance,
+    Overall,
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub struct AnalyticsReport {
+    pub report_id: u64,
+    pub report_type: ReportType,
+    pub generated_at: u64,
+    pub data_period: u64, // Blocks
+    pub summary: String,
+    pub metrics: Vec<AnalyticsMetric>,
+    pub recommendations: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub enum ReportType {
+    Daily,
+    Weekly,
+    Monthly,
+    Quarterly,
+    Annual,
+    Custom,
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub struct AnalyticsMetric {
+    pub name: String,
+    pub value: String,
+    pub unit: String,
+    pub change_from_previous: i32, // Percentage change
+    pub trend: MetricTrend,
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub enum MetricTrend {
+    Increasing,
+    Decreasing,
+    Stable,
+    Unknown,
+} 
