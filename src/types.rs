@@ -614,3 +614,167 @@ pub enum MetricTrend {
     Stable,
     Unknown,
 } 
+
+// ============================================================================
+// DEFI INTEGRATION STRUCTURES (Phase 6)
+// ============================================================================
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub struct FlashLoan {
+    pub id: u64,
+    pub borrower: AccountId,
+    pub asset: AccountId, // Token contract address
+    pub amount: Balance,
+    pub fee_rate: u16, // Flash loan fee in basis points (typically 9 = 0.09%)
+    pub fee_amount: Balance,
+    pub total_repay_amount: Balance,
+    pub status: FlashLoanStatus,
+    pub created_at: u64,
+    pub executed_at: Option<u64>,
+    pub repaid_at: Option<u64>,
+    pub callback_data: Vec<u8>, // Data passed to flash loan callback
+    pub callback_target: AccountId, // Contract to call for flash loan logic
+}
+
+#[derive(Debug, Clone, Copy, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub enum FlashLoanStatus {
+    Pending,
+    Executed,
+    Repaid,
+    Failed,
+    Expired,
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub struct NFTMetadata {
+    pub token_id: u64,
+    pub contract_address: AccountId,
+    pub token_uri: String,
+    pub name: String,
+    pub symbol: String,
+    pub decimals: u8,
+    pub total_supply: u128,
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub struct NFTCollateral {
+    pub nft_id: u64,
+    pub metadata: NFTMetadata,
+    pub valuation: Balance,
+    pub liquidation_threshold: u16, // Basis points
+    pub maintenance_margin: u16, // Basis points
+    pub is_verified: bool, // NFT authenticity verification
+    pub floor_price: Balance,
+    pub rarity_score: u16, // 0-10000 (0-100%)
+    pub market_demand: u16, // 0-10000 (0-100%)
+    pub last_valuation_update: u64,
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub struct CrossChainBridge {
+    pub bridge_id: u64,
+    pub source_chain: u32,
+    pub target_chain: u32,
+    pub source_asset: AccountId,
+    pub target_asset: AccountId,
+    pub bridge_fee: Balance,
+    pub min_transfer: Balance,
+    pub max_transfer: Balance,
+    pub status: BridgeStatus,
+    pub total_volume: Balance,
+    pub total_fees_collected: Balance,
+    pub last_updated: u64,
+}
+
+#[derive(Debug, Clone, Copy, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub enum BridgeStatus {
+    Active,
+    Paused,
+    Maintenance,
+    Disabled,
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub struct CrossChainTransfer {
+    pub transfer_id: u64,
+    pub user: AccountId,
+    pub source_chain: u32,
+    pub target_chain: u32,
+    pub amount: Balance,
+    pub bridge_fee: Balance,
+    pub status: TransferStatus,
+    pub created_at: u64,
+    pub completed_at: Option<u64>,
+    pub transaction_hash: String,
+}
+
+#[derive(Debug, Clone, Copy, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub enum TransferStatus {
+    Pending,
+    Processing,
+    Completed,
+    Failed,
+    Cancelled,
+}
+
+
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub struct StakingPool {
+    pub pool_id: u64,
+    pub token: AccountId,
+    pub total_staked: Balance,
+    pub reward_rate: u16, // Basis points per block
+    pub lock_periods: Vec<u64>, // Available lock periods
+    pub multipliers: Vec<u16>, // Corresponding multipliers
+    pub early_unstake_penalties: Vec<u16>, // Corresponding penalties
+    pub min_stake: Balance,
+    pub max_stake: Balance,
+    pub total_rewards_distributed: Balance,
+    pub last_reward_update: u64,
+    pub is_active: bool,
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub struct LiquidityMining {
+    pub campaign_id: u64,
+    pub name: String,
+    pub description: String,
+    pub reward_token: AccountId,
+    pub total_rewards: Balance,
+    pub distributed_rewards: Balance,
+    pub start_block: u64,
+    pub end_block: u64,
+    pub reward_rate: u16, // Rewards per block
+    pub min_stake: Balance,
+    pub max_stake: Balance,
+    pub staking_requirements: Vec<AccountId>, // Required tokens to stake
+    pub bonus_multipliers: Vec<u16>, // Bonus multipliers for different staking levels
+    pub is_active: bool,
+    pub participants_count: u32,
+    pub total_staked: Balance,
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub struct LiquidityMiningPosition {
+    pub position_id: u64,
+    pub user: AccountId,
+    pub campaign_id: u64,
+    pub staked_amount: Balance,
+    pub staked_at: u64,
+    pub rewards_earned: Balance,
+    pub last_claim: u64,
+    pub multiplier: u16,
+    pub is_active: bool,
+} 

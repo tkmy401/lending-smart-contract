@@ -7,6 +7,7 @@ use crate::types::{
     GracePeriodReason, GracePeriodRecord, LiquidityPool, PoolStatus, LiquidityProvider, RewardToken, StakingRequirements, TierMultiplier,
     MarketDepthLevel, OptimalDistribution, ConcentrationLimits, CollateralType, CollateralRequirement, InsurancePolicy, InsuranceStatus, FraudDetectionRule, FraudRuleType, FraudAction, ComplianceRecord, ComplianceStatus, ComplianceType, CreditScore, CreditFactor, CreditFactorType, CreditScoreRecord, RiskLevel,
     MarketStatistics, MarketTrend, LoanPerformanceMetrics, PortfolioAnalytics, HistoricalDataPoint, PerformanceBenchmark, BenchmarkCategory, AnalyticsReport, ReportType, AnalyticsMetric, MetricTrend,
+    FlashLoan, FlashLoanStatus, CrossChainBridge, BridgeStatus, CrossChainTransfer, TransferStatus, NFTCollateral, NFTMetadata, StakingPool, StakingPosition, LiquidityMining, LiquidityMiningPosition,
 };
 use crate::errors::LendingError;
 
@@ -67,6 +68,25 @@ pub mod lending_contract {
         total_analytics_reports: u64,
         analytics_reports: Mapping<u64, AnalyticsReport>,
         total_users: u64, // Track total user count
+        // DeFi Integration (Phase 6)
+        total_flash_loans: u64,
+        flash_loans: Mapping<u64, FlashLoan>,
+        total_nft_collateral: u64,
+        nft_collateral: Mapping<u64, NFTCollateral>,
+        total_cross_chain_bridges: u64,
+        cross_chain_bridges: Mapping<u64, CrossChainBridge>,
+        total_cross_chain_transfers: u64,
+        cross_chain_transfers: Mapping<u64, CrossChainTransfer>,
+        total_staking_pools: u64,
+        staking_pools: Mapping<u64, StakingPool>,
+        total_staking_positions: u64,
+        staking_positions: Mapping<u64, StakingPosition>,
+        user_staking_positions: Mapping<AccountId, Vec<u64>>,
+        total_liquidity_mining_campaigns: u64,
+        liquidity_mining_campaigns: Mapping<u64, LiquidityMining>,
+        total_liquidity_mining_positions: u64,
+        liquidity_mining_positions: Mapping<u64, LiquidityMiningPosition>,
+        user_liquidity_mining_positions: Mapping<AccountId, Vec<u64>>,
     }
 
     // ============================================================================
@@ -405,6 +425,107 @@ pub mod lending_contract {
         target_score: u16,
     }
 
+    // ============================================================================
+    // DEFI INTEGRATION EVENTS (Phase 6)
+    // ============================================================================
+
+    #[ink(event)]
+    pub struct FlashLoanExecuted {
+        #[ink(topic)]
+        flash_loan_id: u64,
+        borrower: AccountId,
+        asset: AccountId,
+        amount: Balance,
+        fee_amount: Balance,
+        callback_target: AccountId,
+    }
+
+    #[ink(event)]
+    pub struct FlashLoanRepaid {
+        #[ink(topic)]
+        flash_loan_id: u64,
+        borrower: AccountId,
+        asset: AccountId,
+        amount: Balance,
+        fee_amount: Balance,
+        total_repay_amount: Balance,
+    }
+
+    #[ink(event)]
+    pub struct NFTCollateralAdded {
+        #[ink(topic)]
+        nft_id: u64,
+        owner: AccountId,
+        contract_address: AccountId,
+        token_id: u64,
+        valuation: Balance,
+        rarity_score: u16,
+    }
+
+    #[ink(event)]
+    pub struct CrossChainBridgeCreated {
+        #[ink(topic)]
+        bridge_id: u64,
+        source_chain: u32,
+        target_chain: u32,
+        source_asset: AccountId,
+        target_asset: AccountId,
+        bridge_fee: Balance,
+    }
+
+    #[ink(event)]
+    pub struct CrossChainTransferInitiated {
+        #[ink(topic)]
+        transfer_id: u64,
+        user: AccountId,
+        source_chain: u32,
+        target_chain: u32,
+        amount: Balance,
+        bridge_fee: Balance,
+    }
+
+    #[ink(event)]
+    pub struct StakingPoolCreated {
+        #[ink(topic)]
+        pool_id: u64,
+        token: AccountId,
+        reward_rate: u16,
+        min_stake: Balance,
+        max_stake: Balance,
+    }
+
+    #[ink(event)]
+    pub struct StakingPositionOpened {
+        #[ink(topic)]
+        position_id: u64,
+        user: AccountId,
+        pool_id: u64,
+        amount: Balance,
+        lock_period: u64,
+        multiplier: u16,
+    }
+
+    #[ink(event)]
+    pub struct LiquidityMiningCampaignCreated {
+        #[ink(topic)]
+        campaign_id: u64,
+        name: String,
+        reward_token: AccountId,
+        total_rewards: Balance,
+        start_block: u64,
+        end_block: u64,
+    }
+
+    #[ink(event)]
+    pub struct LiquidityMiningPositionOpened {
+        #[ink(topic)]
+        position_id: u64,
+        user: AccountId,
+        campaign_id: u64,
+        staked_amount: Balance,
+        multiplier: u16,
+    }
+
     impl LendingContract {
         // ============================================================================
         // CONSTRUCTOR
@@ -451,6 +572,25 @@ pub mod lending_contract {
                 total_analytics_reports: 0,
                 analytics_reports: Mapping::default(),
                 total_users: 0, // Track total user count
+                // DeFi Integration (Phase 6)
+                total_flash_loans: 0,
+                flash_loans: Mapping::default(),
+                total_nft_collateral: 0,
+                nft_collateral: Mapping::default(),
+                total_cross_chain_bridges: 0,
+                cross_chain_bridges: Mapping::default(),
+                total_cross_chain_transfers: 0,
+                cross_chain_transfers: Mapping::default(),
+                total_staking_pools: 0,
+                staking_pools: Mapping::default(),
+                total_staking_positions: 0,
+                staking_positions: Mapping::default(),
+                user_staking_positions: Mapping::default(),
+                total_liquidity_mining_campaigns: 0,
+                liquidity_mining_campaigns: Mapping::default(),
+                total_liquidity_mining_positions: 0,
+                liquidity_mining_positions: Mapping::default(),
+                user_liquidity_mining_positions: Mapping::default(),
             }
         }
 
@@ -3846,6 +3986,592 @@ pub mod lending_contract {
         #[ink(message)]
         pub fn get_historical_data_count(&self) -> u32 {
             self.historical_data.len() as u32
+        }
+
+        // ============================================================================
+        // DEFI INTEGRATION FUNCTIONS (Phase 6)
+        // ============================================================================
+
+        /// Execute a flash loan
+        #[ink(message)]
+        pub fn execute_flash_loan(
+            &mut self,
+            asset: AccountId,
+            amount: Balance,
+            callback_data: Vec<u8>,
+            callback_target: AccountId,
+        ) -> Result<u64, LendingError> {
+            let caller = self.env().caller();
+            let current_block = self.env().block_number() as u64;
+            
+            // Validate parameters
+            if amount == 0 {
+                return Err(LendingError::InvalidAmount);
+            }
+            
+            // Check if user is blacklisted
+            let user_profile = self.get_or_create_user_profile(caller);
+            if user_profile.is_blacklisted {
+                return Err(LendingError::UserBlacklisted);
+            }
+            
+            // Flash loan fee (typically 0.09% = 9 basis points)
+            let fee_rate = 9;
+            let fee_amount = (amount * fee_rate as u128) / 10000;
+            let total_repay_amount = amount + fee_amount;
+            
+            let flash_loan_id = self.total_flash_loans + 1;
+            
+            let flash_loan = FlashLoan {
+                id: flash_loan_id,
+                borrower: caller,
+                asset,
+                amount,
+                fee_rate,
+                fee_amount,
+                total_repay_amount,
+                status: FlashLoanStatus::Pending,
+                created_at: current_block,
+                executed_at: None,
+                repaid_at: None,
+                callback_data,
+                callback_target,
+            };
+            
+            self.flash_loans.insert(flash_loan_id, &flash_loan);
+            self.total_flash_loans += 1;
+            
+            // Emit event
+            self.env().emit_event(FlashLoanExecuted {
+                flash_loan_id,
+                borrower: caller,
+                asset,
+                amount,
+                fee_amount,
+                callback_target,
+            });
+            
+            Ok(flash_loan_id)
+        }
+
+        /// Repay a flash loan
+        #[ink(message)]
+        pub fn repay_flash_loan(&mut self, flash_loan_id: u64) -> Result<(), LendingError> {
+            let caller = self.env().caller();
+            let current_block = self.env().block_number() as u64;
+            
+            let mut flash_loan = self.flash_loans.get(flash_loan_id)
+                .ok_or(LendingError::LoanNotFound)?;
+            
+            if flash_loan.borrower != caller {
+                return Err(LendingError::Unauthorized);
+            }
+            
+            if flash_loan.status != FlashLoanStatus::Executed {
+                return Err(LendingError::LoanNotActive);
+            }
+            
+            // Update flash loan status
+            flash_loan.status = FlashLoanStatus::Repaid;
+            flash_loan.repaid_at = Some(current_block);
+            
+            self.flash_loans.insert(flash_loan_id, &flash_loan);
+            
+            // Emit event
+            self.env().emit_event(FlashLoanRepaid {
+                flash_loan_id,
+                borrower: caller,
+                asset: flash_loan.asset,
+                amount: flash_loan.amount,
+                fee_amount: flash_loan.fee_amount,
+                total_repay_amount: flash_loan.total_repay_amount,
+            });
+            
+            Ok(())
+        }
+
+        /// Add NFT as collateral
+        #[ink(message)]
+        pub fn add_nft_collateral(
+            &mut self,
+            contract_address: AccountId,
+            token_id: u64,
+            token_uri: String,
+            name: String,
+            symbol: String,
+            decimals: u8,
+            total_supply: u128,
+            valuation: Balance,
+            rarity_score: u16,
+            market_demand: u16,
+        ) -> Result<u64, LendingError> {
+            let caller = self.env().caller();
+            let current_block = self.env().block_number() as u64;
+            
+            // Validate parameters
+            if valuation == 0 || rarity_score > 10000 || market_demand > 10000 {
+                return Err(LendingError::InvalidAmount);
+            }
+            
+            let nft_id = self.total_nft_collateral + 1;
+            
+            let metadata = NFTMetadata {
+                token_id,
+                contract_address,
+                token_uri,
+                name,
+                symbol,
+                decimals,
+                total_supply,
+            };
+            
+            let nft_collateral = NFTCollateral {
+                nft_id,
+                metadata,
+                valuation,
+                liquidation_threshold: 8000, // 80% default
+                maintenance_margin: 12000, // 120% default
+                is_verified: true, // Simplified verification
+                floor_price: valuation,
+                rarity_score,
+                market_demand,
+                last_valuation_update: current_block,
+            };
+            
+            self.nft_collateral.insert(nft_id, &nft_collateral);
+            self.total_nft_collateral += 1;
+            
+            // Emit event
+            self.env().emit_event(NFTCollateralAdded {
+                nft_id,
+                owner: caller,
+                contract_address,
+                token_id,
+                valuation,
+                rarity_score,
+            });
+            
+            Ok(nft_id)
+        }
+
+        /// Create a cross-chain bridge
+        #[ink(message)]
+        pub fn create_cross_chain_bridge(
+            &mut self,
+            source_chain: u32,
+            target_chain: u32,
+            source_asset: AccountId,
+            target_asset: AccountId,
+            bridge_fee: Balance,
+            min_transfer: Balance,
+            max_transfer: Balance,
+        ) -> Result<u64, LendingError> {
+            if !self.is_authorized_admin(self.env().caller()) {
+                return Err(LendingError::Unauthorized);
+            }
+            
+            let bridge_id = self.total_cross_chain_bridges + 1;
+            let current_block = self.env().block_number() as u64;
+            
+            let bridge = CrossChainBridge {
+                bridge_id,
+                source_chain,
+                target_chain,
+                source_asset,
+                target_asset,
+                bridge_fee,
+                min_transfer,
+                max_transfer,
+                status: BridgeStatus::Active,
+                total_volume: 0,
+                total_fees_collected: 0,
+                last_updated: current_block,
+            };
+            
+            self.cross_chain_bridges.insert(bridge_id, &bridge);
+            self.total_cross_chain_bridges += 1;
+            
+            // Emit event
+            self.env().emit_event(CrossChainBridgeCreated {
+                bridge_id,
+                source_chain,
+                target_chain,
+                source_asset,
+                target_asset,
+                bridge_fee,
+            });
+            
+            Ok(bridge_id)
+        }
+
+        /// Initiate cross-chain transfer
+        #[ink(message)]
+        pub fn initiate_cross_chain_transfer(
+            &mut self,
+            bridge_id: u64,
+            target_chain: u32,
+            amount: Balance,
+        ) -> Result<u64, LendingError> {
+            let caller = self.env().caller();
+            let current_block = self.env().block_number() as u64;
+            
+            let bridge = self.cross_chain_bridges.get(bridge_id)
+                .ok_or(LendingError::LoanNotFound)?;
+            
+            if bridge.status != BridgeStatus::Active {
+                return Err(LendingError::LoanNotActive);
+            }
+            
+            if amount < bridge.min_transfer || amount > bridge.max_transfer {
+                return Err(LendingError::InvalidAmount);
+            }
+            
+            let transfer_id = self.total_cross_chain_transfers + 1;
+            
+            let transfer = CrossChainTransfer {
+                transfer_id,
+                user: caller,
+                source_chain: 1, // Current chain (simplified)
+                target_chain,
+                amount,
+                bridge_fee: bridge.bridge_fee,
+                status: TransferStatus::Pending,
+                created_at: current_block,
+                completed_at: None,
+                transaction_hash: format!("0x{:x}", transfer_id), // Simplified hash
+            };
+            
+            self.cross_chain_transfers.insert(transfer_id, &transfer);
+            self.total_cross_chain_transfers += 1;
+            
+            // Emit event
+            self.env().emit_event(CrossChainTransferInitiated {
+                transfer_id,
+                user: caller,
+                source_chain: 1,
+                target_chain,
+                amount,
+                bridge_fee: bridge.bridge_fee,
+            });
+            
+            Ok(transfer_id)
+        }
+
+        /// Create a staking pool
+        #[ink(message)]
+        pub fn create_staking_pool(
+            &mut self,
+            token: AccountId,
+            reward_rate: u16,
+            lock_periods: Vec<u64>,
+            multipliers: Vec<u16>,
+            early_unstake_penalties: Vec<u16>,
+            min_stake: Balance,
+            max_stake: Balance,
+        ) -> Result<u64, LendingError> {
+            if !self.is_authorized_admin(self.env().caller()) {
+                return Err(LendingError::Unauthorized);
+            }
+            
+            let pool_id = self.total_staking_pools + 1;
+            let current_block = self.env().block_number() as u64;
+            
+            let pool = StakingPool {
+                pool_id,
+                token,
+                total_staked: 0,
+                reward_rate,
+                lock_periods,
+                multipliers,
+                early_unstake_penalties,
+                min_stake,
+                max_stake,
+                total_rewards_distributed: 0,
+                last_reward_update: current_block,
+                is_active: true,
+            };
+            
+            self.staking_pools.insert(pool_id, &pool);
+            self.total_staking_pools += 1;
+            
+            // Emit event
+            self.env().emit_event(StakingPoolCreated {
+                pool_id,
+                token,
+                reward_rate,
+                min_stake,
+                max_stake,
+            });
+            
+            Ok(pool_id)
+        }
+
+        /// Open a staking position
+        #[ink(message)]
+        pub fn open_staking_position(
+            &mut self,
+            pool_id: u64,
+            amount: Balance,
+            lock_period_index: u32,
+        ) -> Result<u64, LendingError> {
+            let caller = self.env().caller();
+            let current_block = self.env().block_number() as u64;
+            
+            let pool = self.staking_pools.get(pool_id)
+                .ok_or(LendingError::LoanNotFound)?;
+            
+            if !pool.is_active {
+                return Err(LendingError::LoanNotActive);
+            }
+            
+            if amount < pool.min_stake || amount > pool.max_stake {
+                return Err(LendingError::InvalidAmount);
+            }
+            
+            if lock_period_index as usize >= pool.lock_periods.len() {
+                return Err(LendingError::InvalidAmount);
+            }
+            
+            let lock_period = pool.lock_periods[lock_period_index as usize];
+            let multiplier = pool.multipliers[lock_period_index as usize];
+            let _early_unstake_penalty = pool.early_unstake_penalties[lock_period_index as usize];
+            
+            let position_id = self.total_staking_positions + 1;
+            let unlock_time = current_block + lock_period;
+            
+            let position = StakingPosition {
+                staker: caller,
+                staked_amount: amount,
+                staked_at: current_block,
+                last_reward_claim: current_block,
+                total_rewards_earned: 0,
+                tier_level: format!("Tier_{}", lock_period_index),
+                multiplier,
+                is_locked: true,
+                lock_end_time: unlock_time,
+            };
+            
+            self.staking_positions.insert(position_id, &position);
+            self.total_staking_positions += 1;
+            
+            // Update user positions
+            let mut user_positions = self.user_staking_positions.get(caller).unwrap_or(Vec::new());
+            user_positions.push(position_id);
+            self.user_staking_positions.insert(caller, &user_positions);
+            
+            // Emit event
+            self.env().emit_event(StakingPositionOpened {
+                position_id,
+                user: caller,
+                pool_id,
+                amount,
+                lock_period: lock_period,
+                multiplier,
+            });
+            
+            Ok(position_id)
+        }
+
+        /// Create a liquidity mining campaign
+        #[ink(message)]
+        pub fn create_liquidity_mining_campaign(
+            &mut self,
+            name: String,
+            description: String,
+            reward_token: AccountId,
+            total_rewards: Balance,
+            start_block: u64,
+            end_block: u64,
+            reward_rate: u16,
+            min_stake: Balance,
+            max_stake: Balance,
+            staking_requirements: Vec<AccountId>,
+            bonus_multipliers: Vec<u16>,
+        ) -> Result<u64, LendingError> {
+            if !self.is_authorized_admin(self.env().caller()) {
+                return Err(LendingError::Unauthorized);
+            }
+            
+            let campaign_id = self.total_liquidity_mining_campaigns + 1;
+            let _current_block = self.env().block_number() as u64;
+            
+            let campaign = LiquidityMining {
+                campaign_id,
+                name: name.clone(),
+                description,
+                reward_token,
+                total_rewards,
+                distributed_rewards: 0,
+                start_block,
+                end_block,
+                reward_rate,
+                min_stake,
+                max_stake,
+                staking_requirements,
+                bonus_multipliers,
+                is_active: true,
+                participants_count: 0,
+                total_staked: 0,
+            };
+            
+            // Update last reward update to current block
+            // Note: current_block is used implicitly in the campaign creation
+            
+            self.liquidity_mining_campaigns.insert(campaign_id, &campaign);
+            self.total_liquidity_mining_campaigns += 1;
+            
+            // Emit event
+            self.env().emit_event(LiquidityMiningCampaignCreated {
+                campaign_id,
+                name,
+                reward_token,
+                total_rewards,
+                start_block,
+                end_block,
+            });
+            
+            Ok(campaign_id)
+        }
+
+        /// Open a liquidity mining position
+        #[ink(message)]
+        pub fn open_liquidity_mining_position(
+            &mut self,
+            campaign_id: u64,
+            amount: Balance,
+        ) -> Result<u64, LendingError> {
+            let caller = self.env().caller();
+            let current_block = self.env().block_number() as u64;
+            
+            let campaign = self.liquidity_mining_campaigns.get(campaign_id)
+                .ok_or(LendingError::LoanNotFound)?;
+            
+            if !campaign.is_active {
+                return Err(LendingError::LoanNotActive);
+            }
+            
+            if current_block < campaign.start_block || current_block > campaign.end_block {
+                return Err(LendingError::InvalidAmount);
+            }
+            
+            if amount < campaign.min_stake || amount > campaign.max_stake {
+                return Err(LendingError::InvalidAmount);
+            }
+            
+            let position_id = self.total_liquidity_mining_positions + 1;
+            let multiplier = if campaign.bonus_multipliers.is_empty() {
+                1000 // 1x default
+            } else {
+                campaign.bonus_multipliers[0] // Use first multiplier
+            };
+            
+            let position = LiquidityMiningPosition {
+                position_id,
+                user: caller,
+                campaign_id,
+                staked_amount: amount,
+                staked_at: current_block,
+                rewards_earned: 0,
+                last_claim: current_block,
+                multiplier,
+                is_active: true,
+            };
+            
+            self.liquidity_mining_positions.insert(position_id, &position);
+            self.total_liquidity_mining_positions += 1;
+            
+            // Update user positions
+            let mut user_positions = self.user_liquidity_mining_positions.get(caller).unwrap_or(Vec::new());
+            user_positions.push(position_id);
+            self.user_liquidity_mining_positions.insert(caller, &user_positions);
+            
+            // Emit event
+            self.env().emit_event(LiquidityMiningPositionOpened {
+                position_id,
+                user: caller,
+                campaign_id,
+                staked_amount: amount,
+                multiplier,
+            });
+            
+            Ok(position_id)
+        }
+
+        // ============================================================================
+        // DEFI QUERY FUNCTIONS
+        // ============================================================================
+
+        /// Get flash loan information
+        #[ink(message)]
+        pub fn get_flash_loan(&self, flash_loan_id: u64) -> Result<FlashLoan, LendingError> {
+            self.flash_loans.get(flash_loan_id).ok_or(LendingError::LoanNotFound)
+        }
+
+        /// Get NFT collateral information
+        #[ink(message)]
+        pub fn get_nft_collateral(&self, nft_id: u64) -> Result<NFTCollateral, LendingError> {
+            self.nft_collateral.get(nft_id).ok_or(LendingError::LoanNotFound)
+        }
+
+        /// Get cross-chain bridge information
+        #[ink(message)]
+        pub fn get_cross_chain_bridge(&self, bridge_id: u64) -> Result<CrossChainBridge, LendingError> {
+            self.cross_chain_bridges.get(bridge_id).ok_or(LendingError::LoanNotFound)
+        }
+
+        /// Get cross-chain transfer information
+        #[ink(message)]
+        pub fn get_cross_chain_transfer(&self, transfer_id: u64) -> Result<CrossChainTransfer, LendingError> {
+            self.cross_chain_transfers.get(transfer_id).ok_or(LendingError::LoanNotFound)
+        }
+
+        /// Get staking pool information
+        #[ink(message)]
+        pub fn get_staking_pool(&self, pool_id: u64) -> Result<StakingPool, LendingError> {
+            self.staking_pools.get(pool_id).ok_or(LendingError::LoanNotFound)
+        }
+
+        /// Get staking position information
+        #[ink(message)]
+        pub fn get_staking_position(&self, position_id: u64) -> Result<StakingPosition, LendingError> {
+            self.staking_positions.get(position_id).ok_or(LendingError::LoanNotFound)
+        }
+
+        /// Get liquidity mining campaign information
+        #[ink(message)]
+        pub fn get_liquidity_mining_campaign(&self, campaign_id: u64) -> Result<LiquidityMining, LendingError> {
+            self.liquidity_mining_campaigns.get(campaign_id).ok_or(LendingError::LoanNotFound)
+        }
+
+        /// Get liquidity mining position information
+        #[ink(message)]
+        pub fn get_liquidity_mining_position(&self, position_id: u64) -> Result<LiquidityMiningPosition, LendingError> {
+            self.liquidity_mining_positions.get(position_id).ok_or(LendingError::LoanNotFound)
+        }
+
+        /// Get user staking positions
+        #[ink(message)]
+        pub fn get_user_staking_positions(&self, user: AccountId) -> Vec<u64> {
+            self.user_staking_positions.get(user).unwrap_or(Vec::new())
+        }
+
+        /// Get user liquidity mining positions
+        #[ink(message)]
+        pub fn get_user_liquidity_mining_positions(&self, user: AccountId) -> Vec<u64> {
+            self.user_liquidity_mining_positions.get(user).unwrap_or(Vec::new())
+        }
+
+        /// Get DeFi statistics
+        #[ink(message)]
+        pub fn get_defi_statistics(&self) -> (u64, u64, u64, u64, u64, u64) {
+            (
+                self.total_flash_loans,
+                self.total_nft_collateral,
+                self.total_cross_chain_bridges,
+                self.total_cross_chain_transfers,
+                self.total_staking_pools,
+                self.total_liquidity_mining_campaigns,
+            )
         }
     }
 } 
