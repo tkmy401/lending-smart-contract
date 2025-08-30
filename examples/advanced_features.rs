@@ -2094,4 +2094,312 @@ fn main() {
     
     println!("\n🎯 Phase 5 Implementation Complete!");
     println!("   The lending smart contract now includes comprehensive analytics and reporting capabilities.");
+
+    // ============================================================================
+    // PHASE 6: DEFI INTEGRATION FEATURES DEMONSTRATION
+    // ============================================================================
+    
+    println!("\n🚀 PHASE 6: DeFi Integration Features");
+    println!("{}", "=".repeat(60));
+    
+    // Test 1: Flash Loans
+    println!("\n1. Flash Loans Demonstration...");
+    
+    // Execute a flash loan
+    let asset = AccountId::from([10u8; 32]); // Mock token contract
+    let amount = 5000;
+    let callback_data = vec![1, 2, 3, 4]; // Mock callback data
+    let callback_target = AccountId::from([11u8; 32]); // Mock callback contract
+    
+    let flash_loan_id = contract.execute_flash_loan(asset, amount, callback_data.clone(), callback_target)
+        .expect("Failed to execute flash loan");
+    
+    println!("   ✅ Executed flash loan {} for {} Wei", flash_loan_id, amount);
+    
+    // Get flash loan information
+    match contract.get_flash_loan(flash_loan_id) {
+        Ok(flash_loan) => {
+            println!("   📊 Flash Loan Details:");
+            println!("      - ID: {}", flash_loan.id);
+            println!("      - Asset: {:?}", flash_loan.asset);
+            println!("      - Amount: {} Wei", flash_loan.amount);
+            println!("      - Fee Rate: {} basis points", flash_loan.fee_rate);
+            println!("      - Fee Amount: {} Wei", flash_loan.fee_amount);
+            println!("      - Total Repay: {} Wei", flash_loan.total_repay_amount);
+            println!("      - Status: {:?}", flash_loan.status);
+        },
+        Err(e) => println!("   ❌ Failed to get flash loan: {:?}", e),
+    }
+    
+    // Test 2: NFT Collateral Support
+    println!("\n2. NFT Collateral Support Demonstration...");
+    
+    // Add NFT as collateral
+    let contract_address = AccountId::from([20u8; 32]); // Mock NFT contract
+    let token_id = 12345;
+    let token_uri = "https://example.com/metadata/12345.json".to_string();
+    let name = "Bored Ape #12345".to_string();
+    let symbol = "BAYC".to_string();
+    let decimals = 0;
+    let total_supply = 10000;
+    let valuation = 10000; // 10 ETH equivalent
+    let rarity_score = 8500; // 85% rarity
+    let market_demand = 9200; // 92% demand
+    
+    let nft_id = contract.add_nft_collateral(
+        contract_address,
+        token_id,
+        token_uri,
+        name.clone(),
+        symbol.clone(),
+        decimals,
+        total_supply,
+        valuation,
+        rarity_score,
+        market_demand,
+    ).expect("Failed to add NFT collateral");
+    
+    println!("   ✅ Added NFT collateral with ID: {}", nft_id);
+    
+    // Get NFT collateral information
+    match contract.get_nft_collateral(nft_id) {
+        Ok(nft_collateral) => {
+            println!("   📊 NFT Collateral Details:");
+            println!("      - NFT ID: {}", nft_collateral.nft_id);
+            println!("      - Name: {}", nft_collateral.metadata.name);
+            println!("      - Symbol: {}", nft_collateral.metadata.symbol);
+            println!("      - Valuation: {} Wei", nft_collateral.valuation);
+            println!("      - Rarity Score: {}%", nft_collateral.rarity_score as f64 / 100.0);
+            println!("      - Market Demand: {}%", nft_collateral.market_demand as f64 / 100.0);
+            println!("      - Liquidation Threshold: {}%", nft_collateral.liquidation_threshold as f64 / 100.0);
+            println!("      - Maintenance Margin: {}%", nft_collateral.maintenance_margin as f64 / 100.0);
+        },
+        Err(e) => println!("   ❌ Failed to get NFT collateral: {:?}", e),
+    }
+    
+    // Test 3: Cross-Chain Bridge Support
+    println!("\n3. Cross-Chain Bridge Support Demonstration...");
+    
+    // Create a cross-chain bridge
+    let source_chain = 1; // Ethereum mainnet
+    let target_chain = 137; // Polygon
+    let source_asset = AccountId::from([30u8; 32]); // USDC on Ethereum
+    let target_asset = AccountId::from([31u8; 32]); // USDC on Polygon
+    let bridge_fee = 100; // 0.01% fee
+    let min_transfer = 1000; // Minimum transfer amount
+    let max_transfer = 1000000; // Maximum transfer amount
+    
+    let bridge_id = contract.create_cross_chain_bridge(
+        source_chain,
+        target_chain,
+        source_asset,
+        target_asset,
+        bridge_fee,
+        min_transfer,
+        max_transfer,
+    ).expect("Failed to create cross-chain bridge");
+    
+    println!("   ✅ Created cross-chain bridge with ID: {}", bridge_id);
+    
+    // Get bridge information
+    match contract.get_cross_chain_bridge(bridge_id) {
+        Ok(bridge) => {
+            println!("   📊 Cross-Chain Bridge Details:");
+            println!("      - Bridge ID: {}", bridge.bridge_id);
+            println!("      - Source Chain: {}", bridge.source_chain);
+            println!("      - Target Chain: {}", bridge.target_chain);
+            println!("      - Bridge Fee: {} Wei", bridge.bridge_fee);
+            println!("      - Min Transfer: {} Wei", bridge.min_transfer);
+            println!("      - Max Transfer: {} Wei", bridge.max_transfer);
+            println!("      - Status: {:?}", bridge.status);
+        },
+        Err(e) => println!("   ❌ Failed to get bridge: {:?}", e),
+    }
+    
+    // Initiate cross-chain transfer
+    let transfer_amount = 5000;
+    let transfer_id = contract.initiate_cross_chain_transfer(bridge_id, target_chain, transfer_amount)
+        .expect("Failed to initiate cross-chain transfer");
+    
+    println!("   ✅ Initiated cross-chain transfer {} for {} Wei", transfer_id, transfer_amount);
+    
+    // Test 4: Staking Mechanisms
+    println!("\n4. Staking Mechanisms Demonstration...");
+    
+    // Create a staking pool
+    let staking_token = AccountId::from([40u8; 32]); // Mock staking token
+    let reward_rate = 500; // 5% annual reward rate
+    let lock_periods = vec![14400, 43200, 129600]; // 1 day, 3 days, 9 days
+    let multipliers = vec![1000, 1200, 1500]; // 1x, 1.2x, 1.5x
+    let early_unstake_penalties = vec![500, 300, 100]; // 5%, 3%, 1%
+    let min_stake = 1000;
+    let max_stake = 100000;
+    
+    let staking_pool_id = contract.create_staking_pool(
+        staking_token,
+        reward_rate,
+        lock_periods.clone(),
+        multipliers.clone(),
+        early_unstake_penalties.clone(),
+        min_stake,
+        max_stake,
+    ).expect("Failed to create staking pool");
+    
+    println!("   ✅ Created staking pool with ID: {}", staking_pool_id);
+    
+    // Get staking pool information
+    match contract.get_staking_pool(staking_pool_id) {
+        Ok(pool) => {
+            println!("   📊 Staking Pool Details:");
+            println!("      - Pool ID: {}", pool.pool_id);
+            println!("      - Token: {:?}", pool.token);
+            println!("      - Reward Rate: {}%", pool.reward_rate as f64 / 100.0);
+            println!("      - Min Stake: {} Wei", pool.min_stake);
+            println!("      - Max Stake: {} Wei", pool.max_stake);
+            println!("      - Lock Periods: {:?} blocks", pool.lock_periods);
+            println!("      - Multipliers: {:?}x", pool.multipliers.iter().map(|&x| x as f64 / 1000.0).collect::<Vec<f64>>());
+            println!("      - Early Unstake Penalties: {:?}%", pool.early_unstake_penalties.iter().map(|&x| x as f64 / 100.0).collect::<Vec<f64>>());
+        },
+        Err(e) => println!("   ❌ Failed to get staking pool: {:?}", e),
+    }
+    
+    // Open a staking position
+    let stake_amount = 5000;
+    let lock_period_index = 1; // 3-day lock period
+    let staking_position_id = contract.open_staking_position(staking_pool_id, stake_amount, lock_period_index)
+        .expect("Failed to open staking position");
+    
+    println!("   ✅ Opened staking position {} with {} Wei", staking_position_id, stake_amount);
+    
+    // Get staking position information
+    match contract.get_staking_position(staking_position_id) {
+        Ok(position) => {
+            println!("   📊 Staking Position Details:");
+            println!("      - Staker: {:?}", position.staker);
+            println!("      - Staked Amount: {} Wei", position.staked_amount);
+            println!("      - Staked At: {} blocks", position.staked_at);
+            println!("      - Last Reward Claim: {} blocks", position.last_reward_claim);
+            println!("      - Total Rewards Earned: {} Wei", position.total_rewards_earned);
+            println!("      - Tier Level: {}", position.tier_level);
+            println!("      - Multiplier: {}x", position.multiplier as f64 / 1000.0);
+            println!("      - Is Locked: {}", position.is_locked);
+            println!("      - Lock End Time: {} blocks", position.lock_end_time);
+        },
+        Err(e) => println!("   ❌ Failed to get staking position: {:?}", e),
+    }
+    
+    // Test 5: Liquidity Mining
+    println!("\n5. Liquidity Mining Demonstration...");
+    
+    // Create a liquidity mining campaign
+    let campaign_name = "Summer Yield Farming".to_string();
+    let campaign_description = "Earn rewards by providing liquidity to our lending pools".to_string();
+    let reward_token = AccountId::from([50u8; 32]); // Mock reward token
+    let total_rewards = 100000; // 100k reward tokens
+    let start_block = 0; // Start immediately
+    let end_block = 1296000; // End in 90 days
+    let campaign_reward_rate = 1000; // 10% annual rate
+    let campaign_min_stake = 500;
+    let campaign_max_stake = 50000;
+    let staking_requirements = vec![staking_token]; // Must stake staking token
+    let bonus_multipliers = vec![1000, 1200, 1500]; // 1x, 1.2x, 1.5x
+    
+    let campaign_id = contract.create_liquidity_mining_campaign(
+        campaign_name.clone(),
+        campaign_description,
+        reward_token,
+        total_rewards,
+        start_block,
+        end_block,
+        campaign_reward_rate,
+        campaign_min_stake,
+        campaign_max_stake,
+        staking_requirements.clone(),
+        bonus_multipliers.clone(),
+    ).expect("Failed to create liquidity mining campaign");
+    
+    println!("   ✅ Created liquidity mining campaign with ID: {}", campaign_id);
+    
+    // Get campaign information
+    match contract.get_liquidity_mining_campaign(campaign_id) {
+        Ok(campaign) => {
+            println!("   📊 Liquidity Mining Campaign Details:");
+            println!("      - Campaign ID: {}", campaign.campaign_id);
+            println!("      - Name: {}", campaign.name);
+            println!("      - Description: {}", campaign.description);
+            println!("      - Reward Token: {:?}", campaign.reward_token);
+            println!("      - Total Rewards: {} tokens", campaign.total_rewards);
+            println!("      - Start Block: {}", campaign.start_block);
+            println!("      - End Block: {}", campaign.end_block);
+            println!("      - Reward Rate: {}%", campaign.reward_rate as f64 / 100.0);
+            println!("      - Min Stake: {} Wei", campaign.min_stake);
+            println!("      - Max Stake: {} Wei", campaign.max_stake);
+            println!("      - Staking Requirements: {:?}", campaign.staking_requirements);
+            println!("      - Bonus Multipliers: {:?}x", campaign.bonus_multipliers.iter().map(|&x| x as f64 / 1000.0).collect::<Vec<f64>>());
+        },
+        Err(e) => println!("   ❌ Failed to get campaign: {:?}", e),
+    }
+    
+    // Open a liquidity mining position
+    let mining_stake_amount = 3000;
+    let mining_position_id = contract.open_liquidity_mining_position(campaign_id, mining_stake_amount)
+        .expect("Failed to open liquidity mining position");
+    
+    println!("   ✅ Opened liquidity mining position {} with {} Wei", mining_position_id, mining_stake_amount);
+    
+    // Get liquidity mining position information
+    match contract.get_liquidity_mining_position(mining_position_id) {
+        Ok(position) => {
+            println!("   📊 Liquidity Mining Position Details:");
+            println!("      - Position ID: {}", position.position_id);
+            println!("      - User: {:?}", position.user);
+            println!("      - Campaign ID: {}", position.campaign_id);
+            println!("      - Staked Amount: {} Wei", position.staked_amount);
+            println!("      - Multiplier: {}x", position.multiplier as f64 / 1000.0);
+            println!("      - Is Active: {}", position.is_active);
+        },
+        Err(e) => println!("   ❌ Failed to get mining position: {:?}", e),
+    }
+    
+    // Test 6: DeFi Statistics and Overview
+    println!("\n6. DeFi Integration Overview...");
+    
+    // Get DeFi statistics
+    let (total_flash_loans, total_nft_collateral, total_bridges, total_transfers, total_staking_pools, total_campaigns) = 
+        contract.get_defi_statistics();
+    
+    println!("   📊 DeFi Integration Statistics:");
+    println!("      - Total Flash Loans: {}", total_flash_loans);
+    println!("      - Total NFT Collateral: {}", total_nft_collateral);
+    println!("      - Total Cross-Chain Bridges: {}", total_bridges);
+    println!("      - Total Cross-Chain Transfers: {}", total_transfers);
+    println!("      - Total Staking Pools: {}", total_staking_pools);
+    println!("      - Total Liquidity Mining Campaigns: {}", total_campaigns);
+    
+    // Get user positions
+    let alice = AccountId::from([1u8; 32]);
+    let alice_staking_positions = contract.get_user_staking_positions(alice);
+    let alice_mining_positions = contract.get_user_liquidity_mining_positions(alice);
+    
+    println!("   👤 Alice's DeFi Positions:");
+    println!("      - Staking Positions: {:?}", alice_staking_positions);
+    println!("      - Liquidity Mining Positions: {:?}", alice_mining_positions);
+    
+    println!("\n🎉 Phase 6 DeFi Integration Features Successfully Demonstrated!");
+    println!("   ✅ Flash loans with callback mechanisms");
+    println!("   ✅ NFT collateral support with rarity scoring");
+    println!("   ✅ Cross-chain bridge infrastructure");
+    println!("   ✅ Advanced staking mechanisms with multipliers");
+    println!("   ✅ Liquidity mining campaigns with bonus rewards");
+    println!("   ✅ Comprehensive DeFi position tracking");
+    
+    println!("\n🚀 DeFi Platform Capabilities:");
+    println!("   - **Flash Loans**: Uncollateralized short-term loans for arbitrage and refinancing");
+    println!("   - **NFT Collateral**: Accept NFTs as loan collateral with dynamic valuation");
+    println!("   - **Cross-Chain**: Bridge assets between different blockchain networks");
+    println!("   - **Staking**: Lock tokens for enhanced rewards and governance rights");
+    println!("   - **Liquidity Mining**: Earn rewards by providing liquidity to lending pools");
+    
+    println!("\n🎯 Phase 6 Implementation Complete!");
+    println!("   The lending smart contract now includes cutting-edge DeFi integration capabilities!");
 } 
