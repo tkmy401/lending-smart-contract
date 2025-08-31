@@ -778,3 +778,203 @@ pub struct LiquidityMiningPosition {
     pub multiplier: u16,
     pub is_active: bool,
 } 
+
+// ============================================================================
+// GOVERNANCE & DAO STRUCTURES (Phase 7)
+// ============================================================================
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub struct GovernanceToken {
+    pub token_id: u64,
+    pub name: String,
+    pub symbol: String,
+    pub total_supply: Balance,
+    pub circulating_supply: Balance,
+    pub decimals: u8,
+    pub min_stake_for_voting: Balance,
+    pub min_stake_for_proposal: Balance,
+    pub voting_power_multiplier: u16, // 1000 = 1x
+    pub staking_lock_period: u64, // Blocks required to lock tokens for voting
+    pub is_active: bool,
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub struct GovernanceProposal {
+    pub proposal_id: u64,
+    pub creator: AccountId,
+    pub title: String,
+    pub description: String,
+    pub proposal_type: ProposalType,
+    pub target_contract: Option<AccountId>,
+    pub target_function: Option<String>,
+    pub parameters: Vec<u8>, // Encoded function parameters
+    pub value: Balance, // ETH value to send with proposal execution
+    pub voting_start: u64,
+    pub voting_end: u64,
+    pub execution_delay: u64, // Blocks to wait after voting ends
+    pub quorum: Balance, // Minimum voting power required
+    pub threshold: u16, // Percentage required for approval (basis points)
+    pub status: ProposalStatus,
+    pub total_votes_for: Balance,
+    pub total_votes_against: Balance,
+    pub total_votes_abstain: Balance,
+    pub executed_at: Option<u64>,
+    pub executed_by: Option<AccountId>,
+}
+
+#[derive(Debug, Clone, Copy, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub enum ProposalType {
+    ParameterChange,    // Change contract parameters
+    FunctionCall,       // Execute specific function
+    TreasurySpend,      // Spend treasury funds
+    EmergencyAction,    // Emergency actions (requires higher threshold)
+    GovernanceUpdate,   // Update governance rules
+    ContractUpgrade,    // Upgrade contract logic
+}
+
+#[derive(Debug, Clone, Copy, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub enum ProposalStatus {
+    Active,
+    Approved,
+    Rejected,
+    Executed,
+    Expired,
+    Cancelled,
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub struct Vote {
+    pub voter: AccountId,
+    pub proposal_id: u64,
+    pub vote_choice: VoteChoice,
+    pub voting_power: Balance,
+    pub voted_at: u64,
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub enum VoteChoice {
+    For,
+    Against,
+    Abstain,
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub struct Treasury {
+    pub treasury_id: u64,
+    pub name: String,
+    pub description: String,
+    pub total_balance: Balance,
+    pub daily_spend_limit: Balance,
+    pub monthly_spend_limit: Balance,
+    pub required_signatures: u32, // Multi-sig requirement
+    pub authorized_spenders: Vec<AccountId>,
+    pub pending_transactions: Vec<u64>,
+    pub transaction_history: Vec<u64>,
+    pub last_updated: u64,
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub struct TreasuryTransaction {
+    pub transaction_id: u64,
+    pub treasury_id: u64,
+    pub proposer: AccountId,
+    pub recipient: AccountId,
+    pub amount: Balance,
+    pub purpose: String,
+    pub status: TransactionStatus,
+    pub approvals: Vec<AccountId>,
+    pub created_at: u64,
+    pub executed_at: Option<u64>,
+    pub executed_by: Option<AccountId>,
+}
+
+#[derive(Debug, Clone, Copy, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub enum TransactionStatus {
+    Pending,
+    Approved,
+    Rejected,
+    Executed,
+    Cancelled,
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub struct MultiSignatureWallet {
+    pub wallet_id: u64,
+    pub name: String,
+    pub description: String,
+    pub owners: Vec<AccountId>,
+    pub required_signatures: u32,
+    pub daily_limit: Balance,
+    pub total_balance: Balance,
+    pub pending_transactions: Vec<u64>,
+    pub transaction_history: Vec<u64>,
+    pub is_active: bool,
+    pub created_at: u64,
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub struct MultiSigTransaction {
+    pub transaction_id: u64,
+    pub wallet_id: u64,
+    pub proposer: AccountId,
+    pub recipient: AccountId,
+    pub amount: Balance,
+    pub purpose: String,
+    pub status: TransactionStatus,
+    pub approvals: Vec<AccountId>,
+    pub created_at: u64,
+    pub executed_at: Option<u64>,
+    pub executed_by: Option<AccountId>,
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub struct DAOConfiguration {
+    pub dao_id: u64,
+    pub name: String,
+    pub description: String,
+    pub governance_token: AccountId,
+    pub treasury: u64,
+    pub multi_sig_wallet: u64,
+    pub proposal_creation_threshold: Balance,
+    pub voting_period: u64, // Blocks
+    pub execution_delay: u64, // Blocks
+    pub quorum_percentage: u16, // Basis points
+    pub approval_threshold: u16, // Basis points
+    pub emergency_threshold: u16, // Higher threshold for emergency actions
+    pub max_active_proposals: u32,
+    pub is_active: bool,
+    pub created_at: u64,
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub struct GovernanceSnapshot {
+    pub snapshot_id: u64,
+    pub proposal_id: u64,
+    pub total_voting_power: Balance,
+    pub total_participants: u32,
+    pub voting_distribution: Vec<VoteDistribution>,
+    pub created_at: u64,
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub struct VoteDistribution {
+    pub choice: VoteChoice,
+    pub total_votes: Balance,
+    pub participant_count: u32,
+    pub percentage: u16, // Basis points
+} 

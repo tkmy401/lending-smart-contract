@@ -6,7 +6,7 @@ use ink::env::{
     test,
 };
 
-use lending_smart_contract::{LendingContract, types::{RateAdjustmentReason, CompoundFrequency, PaymentStructure, GracePeriodReason, BenchmarkCategory, ReportType}, errors::LendingError, AccountId};
+use lending_smart_contract::{LendingContract, types::{RateAdjustmentReason, CompoundFrequency, PaymentStructure, GracePeriodReason, BenchmarkCategory, ReportType, ProposalType, VoteChoice}, errors::LendingError, AccountId};
 
 /// Example demonstrating advanced features of the lending smart contract
 fn main() {
@@ -2402,4 +2402,327 @@ fn main() {
     
     println!("\n🎯 Phase 6 Implementation Complete!");
     println!("   The lending smart contract now includes cutting-edge DeFi integration capabilities!");
+
+    // ============================================================================
+    // PHASE 7: GOVERNANCE & DAO FEATURES DEMONSTRATION
+    // ============================================================================
+    
+    println!("\n🚀 PHASE 7: Governance & DAO Features");
+    println!("{}", "=".repeat(60));
+    
+    // Test 1: Governance Token Creation
+    println!("\n1. Governance Token Creation...");
+    
+    // Create a governance token
+    let token_name = "Lending DAO Token".to_string();
+    let token_symbol = "LDAO".to_string();
+    let total_supply = 1000000; // 1 million tokens
+    let decimals = 18;
+    let min_stake_for_voting = 1000; // 1000 tokens required to vote
+    let min_stake_for_proposal = 10000; // 10k tokens required to create proposals
+    let voting_power_multiplier = 1000; // 1x multiplier
+    let staking_lock_period = 14400; // 1 day lock period
+    
+    let governance_token_id = contract.create_governance_token(
+        token_name.clone(),
+        token_symbol.clone(),
+        total_supply,
+        decimals,
+        min_stake_for_voting,
+        min_stake_for_proposal,
+        voting_power_multiplier,
+        staking_lock_period,
+    ).expect("Failed to create governance token");
+    
+    println!("   ✅ Created governance token with ID: {}", governance_token_id);
+    
+    // Get governance token information
+    match contract.get_governance_token(governance_token_id) {
+        Ok(token) => {
+            println!("   📊 Governance Token Details:");
+            println!("      - Token ID: {}", token.token_id);
+            println!("      - Name: {}", token.name);
+            println!("      - Symbol: {}", token.symbol);
+            println!("      - Total Supply: {} tokens", token.total_supply);
+            println!("      - Circulating Supply: {} tokens", token.circulating_supply);
+            println!("      - Decimals: {}", token.decimals);
+            println!("      - Min Stake for Voting: {} tokens", token.min_stake_for_voting);
+            println!("      - Min Stake for Proposal: {} tokens", token.min_stake_for_proposal);
+            println!("      - Voting Power Multiplier: {}x", token.voting_power_multiplier as f64 / 1000.0);
+            println!("      - Staking Lock Period: {} blocks", token.staking_lock_period);
+        },
+        Err(e) => println!("   ❌ Failed to get governance token: {:?}", e),
+    }
+    
+    // Test 2: Token Distribution and Voting Power
+    println!("\n2. Token Distribution and Voting Power...");
+    
+    // Mint tokens to Alice
+    let alice_tokens = 50000; // 50k tokens
+    contract.mint_governance_tokens(governance_token_id, alice, alice_tokens)
+        .expect("Failed to mint tokens to Alice");
+    
+    println!("   ✅ Minted {} tokens to Alice", alice_tokens);
+    
+    // Check Alice's balance and voting power
+    let alice_balance = contract.get_user_governance_tokens(alice);
+    let alice_voting_power = contract.get_user_voting_power(alice);
+    
+    println!("   📊 Alice's Governance Status:");
+    println!("      - Token Balance: {} LDAO", alice_balance);
+    println!("      - Voting Power: {} points", alice_voting_power);
+    println!("      - Can Vote: {}", alice_balance >= min_stake_for_voting);
+    println!("      - Can Create Proposals: {}", alice_balance >= min_stake_for_proposal);
+    
+    // Test 3: Governance Proposal Creation
+    println!("\n3. Governance Proposal Creation...");
+    
+    // Create a governance proposal
+    let proposal_title = "Increase Protocol Fee to 1%".to_string();
+    let proposal_description = "This proposal aims to increase the protocol fee from 0.5% to 1% to improve sustainability.".to_string();
+    let proposal_type = ProposalType::ParameterChange;
+    let target_contract = None; // Internal parameter change
+    let target_function = None;
+    let parameters = vec![1, 0, 0, 0]; // Encoded parameter: 100 basis points
+    let value = 0; // No ETH value
+    let voting_period = 144000; // 10 days
+    let execution_delay = 14400; // 1 day delay
+    let quorum = 100000; // 100k voting power required
+    let threshold = 6000; // 60% approval required
+    
+    let proposal_id = contract.create_governance_proposal(
+        proposal_title.clone(),
+        proposal_description,
+        proposal_type,
+        target_contract,
+        target_function,
+        parameters,
+        value,
+        voting_period,
+        execution_delay,
+        quorum,
+        threshold,
+    ).expect("Failed to create governance proposal");
+    
+    println!("   ✅ Created governance proposal with ID: {}", proposal_id);
+    
+    // Get proposal information
+    match contract.get_governance_proposal(proposal_id) {
+        Ok(proposal) => {
+            println!("   📊 Governance Proposal Details:");
+            println!("      - Proposal ID: {}", proposal.proposal_id);
+            println!("      - Title: {}", proposal.title);
+            println!("      - Creator: {:?}", proposal.creator);
+            println!("      - Type: {:?}", proposal.proposal_type);
+            println!("      - Voting Start: block {}", proposal.voting_start);
+            println!("      - Voting End: block {}", proposal.voting_end);
+            println!("      - Execution Delay: {} blocks", proposal.execution_delay);
+            println!("      - Quorum: {} voting power", proposal.quorum);
+            println!("      - Threshold: {}%", proposal.threshold as f64 / 100.0);
+            println!("      - Status: {:?}", proposal.status);
+        },
+        Err(e) => println!("   ❌ Failed to get proposal: {:?}", e),
+    }
+    
+    // Test 4: Voting on Proposals
+    println!("\n4. Voting on Proposals...");
+    
+    // Alice votes FOR the proposal
+    let vote_reason = "This will improve protocol sustainability and long-term viability.".to_string();
+    contract.cast_vote(proposal_id, VoteChoice::For, Some(vote_reason.clone()))
+        .expect("Failed to cast vote");
+    
+    println!("   ✅ Alice voted FOR the proposal");
+    println!("      - Reason: {}", vote_reason);
+    
+    // Check updated proposal status
+    match contract.get_governance_proposal(proposal_id) {
+        Ok(proposal) => {
+            println!("   📊 Updated Proposal Status:");
+            println!("      - Total Votes For: {} voting power", proposal.total_votes_for);
+            println!("      - Total Votes Against: {} voting power", proposal.total_votes_against);
+            println!("      - Total Votes Abstain: {} voting power", proposal.total_votes_abstain);
+            println!("      - Current Status: {:?}", proposal.status);
+            println!("      - Quorum Met: {}", (proposal.total_votes_for + proposal.total_votes_against + proposal.total_votes_abstain) >= proposal.quorum);
+        },
+        Err(e) => println!("   ❌ Failed to get updated proposal: {:?}", e),
+    }
+    
+    // Test 5: Treasury Creation
+    println!("\n5. Treasury Creation...");
+    
+    // Create a treasury
+    let treasury_name = "Lending Protocol Treasury".to_string();
+    let treasury_description = "Community-controlled treasury for protocol development and incentives".to_string();
+    let daily_spend_limit = 10000; // 10k daily limit
+    let monthly_spend_limit = 200000; // 200k monthly limit
+    let required_signatures = 3; // 3-of-N multi-sig
+    let bob = AccountId::from([2u8; 32]);
+    let charlie = AccountId::from([3u8; 32]);
+    let authorized_spenders = vec![alice, bob, charlie]; // Alice, Bob, Charlie as authorized
+    
+    let treasury_id = contract.create_treasury(
+        treasury_name.clone(),
+        treasury_description,
+        daily_spend_limit,
+        monthly_spend_limit,
+        required_signatures,
+        authorized_spenders.clone(),
+    ).expect("Failed to create treasury");
+    
+    println!("   ✅ Created treasury with ID: {}", treasury_id);
+    
+    // Get treasury information
+    match contract.get_treasury(treasury_id) {
+        Ok(treasury) => {
+            println!("   📊 Treasury Details:");
+            println!("      - Treasury ID: {}", treasury.treasury_id);
+            println!("      - Name: {}", treasury.name);
+            println!("      - Description: {}", treasury.description);
+            println!("      - Total Balance: {} Wei", treasury.total_balance);
+            println!("      - Daily Spend Limit: {} Wei", treasury.daily_spend_limit);
+            println!("      - Monthly Spend Limit: {} Wei", treasury.monthly_spend_limit);
+            println!("      - Required Signatures: {}", treasury.required_signatures);
+            println!("      - Authorized Spenders: {} users", treasury.authorized_spenders.len());
+        },
+        Err(e) => println!("   ❌ Failed to get treasury: {:?}", e),
+    }
+    
+    // Test 6: Multi-Signature Wallet Creation
+    println!("\n6. Multi-Signature Wallet Creation...");
+    
+    // Create a multi-signature wallet
+    let wallet_name = "Protocol Multi-Sig Wallet".to_string();
+    let wallet_description = "Multi-signature wallet for protocol operations and emergency actions".to_string();
+    let django = AccountId::from([4u8; 32]);
+    let eve = AccountId::from([5u8; 32]);
+    let wallet_owners = vec![alice, bob, charlie, django, eve]; // 5 owners
+    let required_signatures = 3; // 3-of-5 multi-sig
+    let daily_limit = 50000; // 50k daily limit
+    
+    let multi_sig_wallet_id = contract.create_multi_signature_wallet(
+        wallet_name.clone(),
+        wallet_description,
+        wallet_owners.clone(),
+        required_signatures,
+        daily_limit,
+    ).expect("Failed to create multi-signature wallet");
+    
+    println!("   ✅ Created multi-signature wallet with ID: {}", multi_sig_wallet_id);
+    
+    // Get multi-signature wallet information
+    match contract.get_multi_signature_wallet(multi_sig_wallet_id) {
+        Ok(wallet) => {
+            println!("   📊 Multi-Signature Wallet Details:");
+            println!("      - Wallet ID: {}", wallet.wallet_id);
+            println!("      - Name: {}", wallet.name);
+            println!("      - Description: {}", wallet.description);
+            println!("      - Owners: {} users", wallet.owners.len());
+            println!("      - Required Signatures: {}", wallet.required_signatures);
+            println!("      - Daily Limit: {} Wei", wallet.daily_limit);
+            println!("      - Total Balance: {} Wei", wallet.total_balance);
+            println!("      - Is Active: {}", wallet.is_active);
+        },
+        Err(e) => println!("   ❌ Failed to get multi-signature wallet: {:?}", e),
+    }
+    
+    // Test 7: DAO Configuration
+    println!("\n7. DAO Configuration...");
+    
+    // Create a DAO configuration
+    let dao_name = "Lending Protocol DAO".to_string();
+    let dao_description = "Decentralized Autonomous Organization for the lending protocol".to_string();
+    let governance_token_addr = AccountId::from([60u8; 32]); // Mock governance token address
+    let proposal_creation_threshold = 10000; // 10k tokens required
+    let voting_period = 144000; // 10 days
+    let execution_delay = 14400; // 1 day delay
+    let quorum_percentage = 5000; // 50% quorum
+    let approval_threshold = 6000; // 60% approval
+    let emergency_threshold = 8000; // 80% for emergency actions
+    let max_active_proposals = 10; // Maximum 10 active proposals
+    
+    let dao_id = contract.create_dao(
+        dao_name.clone(),
+        dao_description,
+        governance_token_addr,
+        treasury_id,
+        multi_sig_wallet_id,
+        proposal_creation_threshold,
+        voting_period,
+        execution_delay,
+        quorum_percentage,
+        approval_threshold,
+        emergency_threshold,
+        max_active_proposals,
+    ).expect("Failed to create DAO");
+    
+    println!("   ✅ Created DAO with ID: {}", dao_id);
+    
+    // Get DAO configuration
+    match contract.get_dao_configuration(dao_id) {
+        Ok(dao) => {
+            println!("   📊 DAO Configuration Details:");
+            println!("      - DAO ID: {}", dao.dao_id);
+            println!("      - Name: {}", dao.name);
+            println!("      - Description: {}", dao.description);
+            println!("      - Governance Token: {:?}", dao.governance_token);
+            println!("      - Treasury: {}", dao.treasury);
+            println!("      - Multi-Sig Wallet: {}", dao.multi_sig_wallet);
+            println!("      - Proposal Creation Threshold: {} tokens", dao.proposal_creation_threshold);
+            println!("      - Voting Period: {} blocks", dao.voting_period);
+            println!("      - Execution Delay: {} blocks", dao.execution_delay);
+            println!("      - Quorum Percentage: {}%", dao.quorum_percentage as f64 / 100.0);
+            println!("      - Approval Threshold: {}%", dao.approval_threshold as f64 / 100.0);
+            println!("      - Emergency Threshold: {}%", dao.emergency_threshold as f64 / 100.0);
+            println!("      - Max Active Proposals: {}", dao.max_active_proposals);
+        },
+        Err(e) => println!("   ❌ Failed to get DAO configuration: {:?}", e),
+    }
+    
+    // Test 8: Governance Overview and Statistics
+    println!("\n8. Governance Overview and Statistics...");
+    
+    // Get governance statistics
+    let (total_tokens, total_proposals, total_votes, total_treasuries, total_wallets, total_daos) = 
+        contract.get_governance_statistics();
+    
+    println!("   📊 Governance Statistics:");
+    println!("      - Total Governance Tokens: {}", total_tokens);
+    println!("      - Total Proposals: {}", total_proposals);
+    println!("      - Total Votes Cast: {}", total_votes);
+    println!("      - Total Treasuries: {}", total_treasuries);
+    println!("      - Total Multi-Sig Wallets: {}", total_wallets);
+    println!("      - Total DAOs: {}", total_daos);
+    
+    // Get active proposals
+    let active_proposals = contract.get_active_proposals();
+    println!("   📋 Active Proposals: {:?}", active_proposals);
+    
+    // Get user governance status
+    let alice_governance_tokens = contract.get_user_governance_tokens(alice);
+    let alice_voting_power_updated = contract.get_user_voting_power(alice);
+    
+    println!("   👤 Alice's Final Governance Status:");
+    println!("      - Governance Tokens: {} LDAO", alice_governance_tokens);
+    println!("      - Voting Power: {} points", alice_voting_power_updated);
+    println!("      - Can Participate: {}", alice_governance_tokens >= min_stake_for_voting);
+    
+    println!("\n🎉 Phase 7 Governance & DAO Features Successfully Demonstrated!");
+    println!("   ✅ Governance token creation and distribution");
+    println!("   ✅ Proposal creation and voting mechanisms");
+    println!("   ✅ Treasury management with multi-signature controls");
+    println!("   ✅ Multi-signature wallet infrastructure");
+    println!("   ✅ Complete DAO configuration and governance");
+    println!("   ✅ Democratic decision-making processes");
+    
+    println!("\n🏛️ Governance Platform Capabilities:");
+    println!("   - **Token-Based Voting**: Democratic governance through token ownership");
+    println!("   - **Proposal Management**: Create, vote, and execute governance proposals");
+    println!("   - **Treasury Control**: Community-controlled funds with spending limits");
+    println!("   - **Multi-Signature Security**: Enhanced security through multi-party approval");
+    println!("   - **DAO Infrastructure**: Complete decentralized autonomous organization setup");
+    println!("   - **Transparent Governance**: All decisions and votes are publicly verifiable");
+    
+    println!("\n🎯 Phase 7 Implementation Complete!");
+    println!("   The lending smart contract now includes comprehensive governance and DAO capabilities!");
 } 
