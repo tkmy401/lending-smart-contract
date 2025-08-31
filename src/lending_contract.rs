@@ -8,6 +8,7 @@ use crate::types::{
     MarketDepthLevel, OptimalDistribution, ConcentrationLimits, CollateralType, CollateralRequirement, InsurancePolicy, InsuranceStatus, FraudDetectionRule, FraudRuleType, FraudAction, ComplianceRecord, ComplianceStatus, ComplianceType, CreditScore, CreditFactor, CreditFactorType, CreditScoreRecord, RiskLevel,
     MarketStatistics, MarketTrend, LoanPerformanceMetrics, PortfolioAnalytics, HistoricalDataPoint, PerformanceBenchmark, BenchmarkCategory, AnalyticsReport, ReportType, AnalyticsMetric, MetricTrend,
     FlashLoan, FlashLoanStatus, CrossChainBridge, BridgeStatus, CrossChainTransfer, TransferStatus, NFTCollateral, NFTMetadata, StakingPool, StakingPosition, LiquidityMining, LiquidityMiningPosition,
+    GovernanceToken, GovernanceProposal, ProposalType, ProposalStatus, Vote, VoteChoice, Treasury, TreasuryTransaction, MultiSignatureWallet, MultiSigTransaction, DAOConfiguration, GovernanceSnapshot,
 };
 use crate::errors::LendingError;
 
@@ -87,6 +88,28 @@ pub mod lending_contract {
         total_liquidity_mining_positions: u64,
         liquidity_mining_positions: Mapping<u64, LiquidityMiningPosition>,
         user_liquidity_mining_positions: Mapping<AccountId, Vec<u64>>,
+        // Governance & DAO (Phase 7)
+        total_governance_tokens: u64,
+        governance_tokens: Mapping<u64, GovernanceToken>,
+        total_proposals: u64,
+        governance_proposals: Mapping<u64, GovernanceProposal>,
+        total_votes: u64,
+        votes: Mapping<u64, Vote>,
+        user_votes: Mapping<AccountId, Vec<u64>>,
+        total_treasuries: u64,
+        treasuries: Mapping<u64, Treasury>,
+        total_treasury_transactions: u64,
+        treasury_transactions: Mapping<u64, TreasuryTransaction>,
+        total_multi_sig_wallets: u64,
+        multi_sig_wallets: Mapping<u64, MultiSignatureWallet>,
+        total_multi_sig_transactions: u64,
+        multi_sig_transactions: Mapping<u64, MultiSigTransaction>,
+        total_daos: u64,
+        dao_configurations: Mapping<u64, DAOConfiguration>,
+        total_governance_snapshots: u64,
+        governance_snapshots: Mapping<u64, GovernanceSnapshot>,
+        user_governance_tokens: Mapping<AccountId, Balance>,
+        user_voting_power: Mapping<AccountId, Balance>,
     }
 
     // ============================================================================
@@ -526,6 +549,103 @@ pub mod lending_contract {
         multiplier: u16,
     }
 
+    // ============================================================================
+    // GOVERNANCE & DAO EVENTS (Phase 7)
+    // ============================================================================
+
+    #[ink(event)]
+    pub struct GovernanceTokenCreated {
+        #[ink(topic)]
+        token_id: u64,
+        name: String,
+        symbol: String,
+        total_supply: Balance,
+        min_stake_for_voting: Balance,
+        min_stake_for_proposal: Balance,
+    }
+
+    #[ink(event)]
+    pub struct GovernanceProposalCreated {
+        #[ink(topic)]
+        proposal_id: u64,
+        creator: AccountId,
+        title: String,
+        proposal_type: ProposalType,
+        voting_start: u64,
+        voting_end: u64,
+        quorum: Balance,
+        threshold: u16,
+    }
+
+    #[ink(event)]
+    pub struct VoteCast {
+        #[ink(topic)]
+        proposal_id: u64,
+        voter: AccountId,
+        vote_choice: VoteChoice,
+        voting_power: Balance,
+        reason: Option<String>,
+    }
+
+    #[ink(event)]
+    pub struct ProposalExecuted {
+        #[ink(topic)]
+        proposal_id: u64,
+        executor: AccountId,
+        executed_at: u64,
+    }
+
+    #[ink(event)]
+    pub struct TreasuryCreated {
+        #[ink(topic)]
+        treasury_id: u64,
+        name: String,
+        daily_spend_limit: Balance,
+        monthly_spend_limit: Balance,
+        required_signatures: u32,
+    }
+
+    #[ink(event)]
+    pub struct TreasuryTransactionProposed {
+        #[ink(topic)]
+        transaction_id: u64,
+        treasury_id: u64,
+        proposer: AccountId,
+        recipient: AccountId,
+        amount: Balance,
+        purpose: String,
+    }
+
+    #[ink(event)]
+    pub struct MultiSignatureWalletCreated {
+        #[ink(topic)]
+        wallet_id: u64,
+        name: String,
+        owners_count: u32,
+        required_signatures: u32,
+        daily_limit: Balance,
+    }
+
+    #[ink(event)]
+    pub struct DAOCreated {
+        #[ink(topic)]
+        dao_id: u64,
+        name: String,
+        governance_token: AccountId,
+        treasury: u64,
+        multi_sig_wallet: u64,
+        proposal_creation_threshold: Balance,
+    }
+
+    #[ink(event)]
+    pub struct GovernanceSnapshotCreated {
+        #[ink(topic)]
+        snapshot_id: u64,
+        proposal_id: u64,
+        total_voting_power: Balance,
+        total_participants: u32,
+    }
+
     impl LendingContract {
         // ============================================================================
         // CONSTRUCTOR
@@ -591,6 +711,28 @@ pub mod lending_contract {
                 total_liquidity_mining_positions: 0,
                 liquidity_mining_positions: Mapping::default(),
                 user_liquidity_mining_positions: Mapping::default(),
+                // Governance & DAO (Phase 7)
+                total_governance_tokens: 0,
+                governance_tokens: Mapping::default(),
+                total_proposals: 0,
+                governance_proposals: Mapping::default(),
+                total_votes: 0,
+                votes: Mapping::default(),
+                user_votes: Mapping::default(),
+                total_treasuries: 0,
+                treasuries: Mapping::default(),
+                total_treasury_transactions: 0,
+                treasury_transactions: Mapping::default(),
+                total_multi_sig_wallets: 0,
+                multi_sig_wallets: Mapping::default(),
+                total_multi_sig_transactions: 0,
+                multi_sig_transactions: Mapping::default(),
+                total_daos: 0,
+                dao_configurations: Mapping::default(),
+                total_governance_snapshots: 0,
+                governance_snapshots: Mapping::default(),
+                user_governance_tokens: Mapping::default(),
+                user_voting_power: Mapping::default(),
             }
         }
 
@@ -4572,6 +4714,557 @@ pub mod lending_contract {
                 self.total_staking_pools,
                 self.total_liquidity_mining_campaigns,
             )
+        }
+
+        // ============================================================================
+        // GOVERNANCE & DAO FUNCTIONS (Phase 7)
+        // ============================================================================
+
+        /// Create a governance token
+        #[ink(message)]
+        pub fn create_governance_token(
+            &mut self,
+            name: String,
+            symbol: String,
+            total_supply: Balance,
+            decimals: u8,
+            min_stake_for_voting: Balance,
+            min_stake_for_proposal: Balance,
+            voting_power_multiplier: u16,
+            staking_lock_period: u64,
+        ) -> Result<u64, LendingError> {
+            if !self.is_authorized_admin(self.env().caller()) {
+                return Err(LendingError::Unauthorized);
+            }
+            
+            let token_id = self.total_governance_tokens + 1;
+            let _current_block = self.env().block_number() as u64;
+            
+            let token = GovernanceToken {
+                token_id,
+                name: name.clone(),
+                symbol: symbol.clone(),
+                total_supply,
+                circulating_supply: 0,
+                decimals,
+                min_stake_for_voting,
+                min_stake_for_proposal,
+                voting_power_multiplier,
+                staking_lock_period,
+                is_active: true,
+            };
+            
+            self.governance_tokens.insert(token_id, &token);
+            self.total_governance_tokens += 1;
+            
+            // Emit event
+            self.env().emit_event(GovernanceTokenCreated {
+                token_id,
+                name,
+                symbol,
+                total_supply,
+                min_stake_for_voting,
+                min_stake_for_proposal,
+            });
+            
+            Ok(token_id)
+        }
+
+        /// Mint governance tokens to a user
+        #[ink(message)]
+        pub fn mint_governance_tokens(
+            &mut self,
+            token_id: u64,
+            recipient: AccountId,
+            amount: Balance,
+        ) -> Result<(), LendingError> {
+            if !self.is_authorized_admin(self.env().caller()) {
+                return Err(LendingError::Unauthorized);
+            }
+            
+            let mut token = self.governance_tokens.get(token_id)
+                .ok_or(LendingError::LoanNotFound)?;
+            
+            if !token.is_active {
+                return Err(LendingError::LoanNotActive);
+            }
+            
+            if token.circulating_supply + amount > token.total_supply {
+                return Err(LendingError::InvalidAmount);
+            }
+            
+            // Update token supply
+            token.circulating_supply += amount;
+            self.governance_tokens.insert(token_id, &token);
+            
+            // Update user balance
+            let current_balance = self.user_governance_tokens.get(recipient).unwrap_or(0);
+            self.user_governance_tokens.insert(recipient, &(current_balance + amount));
+            
+            // Update voting power
+            let voting_power = (amount * token.voting_power_multiplier as u128) / 1000;
+            let current_voting_power = self.user_voting_power.get(recipient).unwrap_or(0);
+            self.user_voting_power.insert(recipient, &(current_voting_power + voting_power));
+            
+            Ok(())
+        }
+
+        /// Create a governance proposal
+        #[ink(message)]
+        pub fn create_governance_proposal(
+            &mut self,
+            title: String,
+            description: String,
+            proposal_type: ProposalType,
+            target_contract: Option<AccountId>,
+            target_function: Option<String>,
+            parameters: Vec<u8>,
+            value: Balance,
+            voting_period: u64,
+            execution_delay: u64,
+            quorum: Balance,
+            threshold: u16,
+        ) -> Result<u64, LendingError> {
+            let caller = self.env().caller();
+            let current_block = self.env().block_number() as u64;
+            
+            // Check if user has enough governance tokens to create proposal
+            let user_balance = self.user_governance_tokens.get(caller).unwrap_or(0);
+            let token = self.governance_tokens.get(1).ok_or(LendingError::LoanNotFound)?; // Assume first token
+            
+            if user_balance < token.min_stake_for_proposal {
+                return Err(LendingError::InvalidAmount);
+            }
+            
+            let proposal_id = self.total_proposals + 1;
+            let voting_start = current_block;
+            let voting_end = current_block + voting_period;
+            
+            let proposal = GovernanceProposal {
+                proposal_id,
+                creator: caller,
+                title: title.clone(),
+                description,
+                proposal_type,
+                target_contract,
+                target_function,
+                parameters,
+                value,
+                voting_start,
+                voting_end,
+                execution_delay,
+                quorum,
+                threshold,
+                status: ProposalStatus::Active,
+                total_votes_for: 0,
+                total_votes_against: 0,
+                total_votes_abstain: 0,
+                executed_at: None,
+                executed_by: None,
+            };
+            
+            self.governance_proposals.insert(proposal_id, &proposal);
+            self.total_proposals += 1;
+            
+            // Emit event
+            self.env().emit_event(GovernanceProposalCreated {
+                proposal_id,
+                creator: caller,
+                title,
+                proposal_type,
+                voting_start,
+                voting_end,
+                quorum,
+                threshold,
+            });
+            
+            Ok(proposal_id)
+        }
+
+        /// Cast a vote on a governance proposal
+        #[ink(message)]
+        pub fn cast_vote(
+            &mut self,
+            proposal_id: u64,
+            vote_choice: VoteChoice,
+            reason: Option<String>,
+        ) -> Result<(), LendingError> {
+            let caller = self.env().caller();
+            let current_block = self.env().block_number() as u64;
+            
+            let proposal = self.governance_proposals.get(proposal_id)
+                .ok_or(LendingError::LoanNotFound)?;
+            
+            if proposal.status != ProposalStatus::Active {
+                return Err(LendingError::LoanNotActive);
+            }
+            
+            if current_block < proposal.voting_start || current_block > proposal.voting_end {
+                return Err(LendingError::InvalidAmount);
+            }
+            
+            // Check if user has already voted
+            let user_votes = self.user_votes.get(caller).unwrap_or(Vec::new());
+            for vote_id in &user_votes {
+                let vote = self.votes.get(*vote_id).unwrap_or_else(|| Vote {
+                    voter: AccountId::from([0u8; 32]),
+                    proposal_id: 0,
+                    vote_choice: VoteChoice::For,
+                    voting_power: 0,
+                    voted_at: 0,
+                    reason: None,
+                });
+                if vote.proposal_id == proposal_id {
+                    return Err(LendingError::InvalidAmount); // Already voted
+                }
+            }
+            
+            // Get user's voting power
+            let voting_power = self.user_voting_power.get(caller).unwrap_or(0);
+            if voting_power == 0 {
+                return Err(LendingError::InvalidAmount);
+            }
+            
+            let vote_id = self.total_votes + 1;
+            
+            let vote = Vote {
+                voter: caller,
+                proposal_id,
+                vote_choice,
+                voting_power,
+                voted_at: current_block,
+                reason: reason.clone(),
+            };
+            
+            self.votes.insert(vote_id, &vote);
+            self.total_votes += 1;
+            
+            // Update user votes
+            let mut user_votes = self.user_votes.get(caller).unwrap_or(Vec::new());
+            user_votes.push(vote_id);
+            self.user_votes.insert(caller, &user_votes);
+            
+            // Update proposal vote counts
+            let mut proposal = self.governance_proposals.get(proposal_id).unwrap();
+            match vote_choice {
+                VoteChoice::For => proposal.total_votes_for += voting_power,
+                VoteChoice::Against => proposal.total_votes_against += voting_power,
+                VoteChoice::Abstain => proposal.total_votes_abstain += voting_power,
+            }
+            
+            // Check if proposal should be approved/rejected
+            let total_votes = proposal.total_votes_for + proposal.total_votes_against + proposal.total_votes_abstain;
+            if total_votes >= proposal.quorum {
+                let approval_percentage = (proposal.total_votes_for * 10000) / total_votes;
+                if approval_percentage >= proposal.threshold.into() {
+                    proposal.status = ProposalStatus::Approved;
+                } else {
+                    proposal.status = ProposalStatus::Rejected;
+                }
+            }
+            
+            self.governance_proposals.insert(proposal_id, &proposal);
+            
+            // Emit event
+            self.env().emit_event(VoteCast {
+                proposal_id,
+                voter: caller,
+                vote_choice,
+                voting_power,
+                reason,
+            });
+            
+            Ok(())
+        }
+
+        /// Execute an approved governance proposal
+        #[ink(message)]
+        pub fn execute_proposal(&mut self, proposal_id: u64) -> Result<(), LendingError> {
+            let caller = self.env().caller();
+            let current_block = self.env().block_number() as u64;
+            
+            let mut proposal = self.governance_proposals.get(proposal_id)
+                .ok_or(LendingError::LoanNotFound)?;
+            
+            if proposal.status != ProposalStatus::Approved {
+                return Err(LendingError::LoanNotActive);
+            }
+            
+            if current_block < proposal.voting_end + proposal.execution_delay {
+                return Err(LendingError::InvalidAmount); // Execution delay not met
+            }
+            
+            // Execute the proposal based on type
+            match proposal.proposal_type {
+                ProposalType::ParameterChange => {
+                    // Handle parameter changes
+                    // This would typically call internal functions to update parameters
+                },
+                ProposalType::FunctionCall => {
+                    // Handle function calls
+                    // This would typically call external contracts
+                },
+                ProposalType::TreasurySpend => {
+                    // Handle treasury spending
+                    // This would typically create a treasury transaction
+                },
+                ProposalType::EmergencyAction => {
+                    // Handle emergency actions
+                    // This would typically have special execution logic
+                },
+                ProposalType::GovernanceUpdate => {
+                    // Handle governance updates
+                    // This would typically update governance parameters
+                },
+                ProposalType::ContractUpgrade => {
+                    // Handle contract upgrades
+                    // This would typically trigger upgrade logic
+                },
+            }
+            
+            // Mark proposal as executed
+            proposal.status = ProposalStatus::Executed;
+            proposal.executed_at = Some(current_block);
+            proposal.executed_by = Some(caller);
+            
+            self.governance_proposals.insert(proposal_id, &proposal);
+            
+            // Emit event
+            self.env().emit_event(ProposalExecuted {
+                proposal_id,
+                executor: caller,
+                executed_at: current_block,
+            });
+            
+            Ok(())
+        }
+
+        /// Create a treasury
+        #[ink(message)]
+        pub fn create_treasury(
+            &mut self,
+            name: String,
+            description: String,
+            daily_spend_limit: Balance,
+            monthly_spend_limit: Balance,
+            required_signatures: u32,
+            authorized_spenders: Vec<AccountId>,
+        ) -> Result<u64, LendingError> {
+            if !self.is_authorized_admin(self.env().caller()) {
+                return Err(LendingError::Unauthorized);
+            }
+            
+            let treasury_id = self.total_treasuries + 1;
+            let current_block = self.env().block_number() as u64;
+            
+            let treasury = Treasury {
+                treasury_id,
+                name: name.clone(),
+                description,
+                total_balance: 0,
+                daily_spend_limit,
+                monthly_spend_limit,
+                required_signatures,
+                authorized_spenders,
+                pending_transactions: Vec::new(),
+                transaction_history: Vec::new(),
+                last_updated: current_block,
+            };
+            
+            self.treasuries.insert(treasury_id, &treasury);
+            self.total_treasuries += 1;
+            
+            // Emit event
+            self.env().emit_event(TreasuryCreated {
+                treasury_id,
+                name,
+                daily_spend_limit,
+                monthly_spend_limit,
+                required_signatures,
+            });
+            
+            Ok(treasury_id)
+        }
+
+        /// Create a multi-signature wallet
+        #[ink(message)]
+        pub fn create_multi_signature_wallet(
+            &mut self,
+            name: String,
+            description: String,
+            owners: Vec<AccountId>,
+            required_signatures: u32,
+            daily_limit: Balance,
+        ) -> Result<u64, LendingError> {
+            if !self.is_authorized_admin(self.env().caller()) {
+                return Err(LendingError::Unauthorized);
+            }
+            
+            if owners.is_empty() || required_signatures == 0 || required_signatures > owners.len() as u32 {
+                return Err(LendingError::InvalidAmount);
+            }
+            
+            let wallet_id = self.total_multi_sig_wallets + 1;
+            let current_block = self.env().block_number() as u64;
+            
+            let wallet = MultiSignatureWallet {
+                wallet_id,
+                name: name.clone(),
+                description,
+                owners,
+                required_signatures,
+                daily_limit,
+                total_balance: 0,
+                pending_transactions: Vec::new(),
+                transaction_history: Vec::new(),
+                is_active: true,
+                created_at: current_block,
+            };
+            
+            self.multi_sig_wallets.insert(wallet_id, &wallet);
+            self.total_multi_sig_wallets += 1;
+            
+            // Emit event
+            self.env().emit_event(MultiSignatureWalletCreated {
+                wallet_id,
+                name,
+                owners_count: wallet.owners.len() as u32,
+                required_signatures,
+                daily_limit,
+            });
+            
+            Ok(wallet_id)
+        }
+
+        /// Create a DAO configuration
+        #[ink(message)]
+        pub fn create_dao(
+            &mut self,
+            name: String,
+            description: String,
+            governance_token: AccountId,
+            treasury: u64,
+            multi_sig_wallet: u64,
+            proposal_creation_threshold: Balance,
+            voting_period: u64,
+            execution_delay: u64,
+            quorum_percentage: u16,
+            approval_threshold: u16,
+            emergency_threshold: u16,
+            max_active_proposals: u32,
+        ) -> Result<u64, LendingError> {
+            if !self.is_authorized_admin(self.env().caller()) {
+                return Err(LendingError::Unauthorized);
+            }
+            
+            let dao_id = self.total_daos + 1;
+            let current_block = self.env().block_number() as u64;
+            
+            let dao = DAOConfiguration {
+                dao_id,
+                name: name.clone(),
+                description,
+                governance_token,
+                treasury,
+                multi_sig_wallet,
+                proposal_creation_threshold,
+                voting_period,
+                execution_delay,
+                quorum_percentage,
+                approval_threshold,
+                emergency_threshold,
+                max_active_proposals,
+                is_active: true,
+                created_at: current_block,
+            };
+            
+            self.dao_configurations.insert(dao_id, &dao);
+            self.total_daos += 1;
+            
+            // Emit event
+            self.env().emit_event(DAOCreated {
+                dao_id,
+                name,
+                governance_token,
+                treasury,
+                multi_sig_wallet,
+                proposal_creation_threshold,
+            });
+            
+            Ok(dao_id)
+        }
+
+        // ============================================================================
+        // GOVERNANCE QUERY FUNCTIONS
+        // ============================================================================
+
+        /// Get governance token information
+        #[ink(message)]
+        pub fn get_governance_token(&self, token_id: u64) -> Result<GovernanceToken, LendingError> {
+            self.governance_tokens.get(token_id).ok_or(LendingError::LoanNotFound)
+        }
+
+        /// Get governance proposal information
+        #[ink(message)]
+        pub fn get_governance_proposal(&self, proposal_id: u64) -> Result<GovernanceProposal, LendingError> {
+            self.governance_proposals.get(proposal_id).ok_or(LendingError::LoanNotFound)
+        }
+
+        /// Get user's governance token balance
+        #[ink(message)]
+        pub fn get_user_governance_tokens(&self, user: AccountId) -> Balance {
+            self.user_governance_tokens.get(user).unwrap_or(0)
+        }
+
+        /// Get user's voting power
+        #[ink(message)]
+        pub fn get_user_voting_power(&self, user: AccountId) -> Balance {
+            self.user_voting_power.get(user).unwrap_or(0)
+        }
+
+        /// Get treasury information
+        #[ink(message)]
+        pub fn get_treasury(&self, treasury_id: u64) -> Result<Treasury, LendingError> {
+            self.treasuries.get(treasury_id).ok_or(LendingError::LoanNotFound)
+        }
+
+        /// Get multi-signature wallet information
+        #[ink(message)]
+        pub fn get_multi_signature_wallet(&self, wallet_id: u64) -> Result<MultiSignatureWallet, LendingError> {
+            self.multi_sig_wallets.get(wallet_id).ok_or(LendingError::LoanNotFound)
+        }
+
+        /// Get DAO configuration
+        #[ink(message)]
+        pub fn get_dao_configuration(&self, dao_id: u64) -> Result<DAOConfiguration, LendingError> {
+            self.dao_configurations.get(dao_id).ok_or(LendingError::LoanNotFound)
+        }
+
+        /// Get governance statistics
+        #[ink(message)]
+        pub fn get_governance_statistics(&self) -> (u64, u64, u64, u64, u64, u64) {
+            (
+                self.total_governance_tokens,
+                self.total_proposals,
+                self.total_votes,
+                self.total_treasuries,
+                self.total_multi_sig_wallets,
+                self.total_daos,
+            )
+        }
+
+        /// Get active proposals
+        #[ink(message)]
+        pub fn get_active_proposals(&self) -> Vec<u64> {
+            let mut active_proposals = Vec::new();
+            for i in 1..=self.total_proposals {
+                if let Some(proposal) = self.governance_proposals.get(i) {
+                    if proposal.status == ProposalStatus::Active {
+                        active_proposals.push(i);
+                    }
+                }
+            }
+            active_proposals
         }
     }
 } 
