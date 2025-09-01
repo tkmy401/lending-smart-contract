@@ -978,3 +978,239 @@ pub struct VoteDistribution {
     pub participant_count: u32,
     pub percentage: u16, // Basis points
 } 
+
+// ============================================================================
+// PERFORMANCE & GAS OPTIMIZATION STRUCTURES (Phase 8)
+// ============================================================================
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub struct BatchOperation {
+    pub batch_id: u64,
+    pub operation_type: BatchOperationType,
+    pub operations: Vec<BatchItem>,
+    pub total_gas_used: u64,
+    pub total_cost: Balance,
+    pub status: BatchStatus,
+    pub created_at: u64,
+    pub completed_at: Option<u64>,
+    pub error_count: u32,
+    pub success_count: u32,
+}
+
+#[derive(Debug, Clone, Copy, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub enum BatchOperationType {
+    LoanCreation,
+    LoanRepayment,
+    UserRegistration,
+    CollateralManagement,
+    LiquidityProvision,
+    GovernanceVoting,
+    TreasuryOperations,
+    MultiSigTransactions,
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub struct BatchItem {
+    pub item_id: u64,
+    pub operation_data: Vec<u8>, // Encoded operation data
+    pub gas_estimate: u64,
+    pub status: BatchItemStatus,
+    pub error_message: Option<String>,
+    pub executed_at: Option<u64>,
+}
+
+#[derive(Debug, Clone, Copy, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub enum BatchStatus {
+    Pending,
+    Processing,
+    Completed,
+    Failed,
+    PartiallyCompleted,
+}
+
+#[derive(Debug, Clone, Copy, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub enum BatchItemStatus {
+    Pending,
+    Executed,
+    Failed,
+    Skipped,
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub struct StorageOptimization {
+    pub optimization_id: u64,
+    pub optimization_type: StorageOptimizationType,
+    pub target_contract: AccountId,
+    pub old_storage_size: u64,
+    pub new_storage_size: u64,
+    pub gas_savings: u64,
+    pub cost_savings: Balance,
+    pub status: OptimizationStatus,
+    pub created_at: u64,
+    pub applied_at: Option<u64>,
+}
+
+#[derive(Debug, Clone, Copy, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub enum StorageOptimizationType {
+    DataCompression,
+    StructureOptimization,
+    UnusedDataRemoval,
+    IndexOptimization,
+    CacheImplementation,
+}
+
+#[derive(Debug, Clone, Copy, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub enum OptimizationStatus {
+    Proposed,
+    Approved,
+    Applied,
+    Rejected,
+    RolledBack,
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub struct UpgradeableContract {
+    pub contract_id: u64,
+    pub current_version: String,
+    pub upgrade_proxy: AccountId,
+    pub implementation_address: AccountId,
+    pub admin_address: AccountId,
+    pub upgrade_history: Vec<ContractUpgrade>,
+    pub is_upgradeable: bool,
+    pub upgrade_delay: u64, // Blocks to wait before upgrade
+    pub created_at: u64,
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub struct ContractUpgrade {
+    pub upgrade_id: u64,
+    pub from_version: String,
+    pub to_version: String,
+    pub implementation_address: AccountId,
+    pub upgrade_reason: String,
+    pub gas_used: u64,
+    pub cost: Balance,
+    pub executed_by: AccountId,
+    pub executed_at: u64,
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub struct GasOptimization {
+    pub optimization_id: u64,
+    pub function_name: String,
+    pub old_gas_usage: u64,
+    pub new_gas_usage: u64,
+    pub gas_savings: u64,
+    pub optimization_type: GasOptimizationType,
+    pub status: OptimizationStatus,
+    pub created_at: u64,
+    pub applied_at: Option<u64>,
+}
+
+#[derive(Debug, Clone, Copy, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub enum GasOptimizationType {
+    LoopOptimization,
+    StorageAccessOptimization,
+    FunctionInlining,
+    DeadCodeRemoval,
+    VariableOptimization,
+    MemoryUsageOptimization,
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub struct ParallelProcessing {
+    pub process_id: u64,
+    pub process_type: ParallelProcessType,
+    pub concurrent_operations: Vec<ParallelOperation>,
+    pub total_operations: u32,
+    pub completed_operations: u32,
+    pub failed_operations: u32,
+    pub gas_used: u64,
+    pub execution_time: u64, // Blocks
+    pub status: ParallelProcessStatus,
+    pub created_at: u64,
+    pub completed_at: Option<u64>,
+}
+
+#[derive(Debug, Clone, Copy, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub enum ParallelProcessType {
+    BatchLoanProcessing,
+    ConcurrentUserOperations,
+    ParallelAnalytics,
+    MultiPoolOperations,
+    GovernanceBatchProcessing,
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub struct ParallelOperation {
+    pub operation_id: u64,
+    pub operation_type: String,
+    pub input_data: Vec<u8>,
+    pub output_data: Option<Vec<u8>>,
+    pub gas_used: u64,
+    pub status: ParallelOperationStatus,
+    pub started_at: u64,
+    pub completed_at: Option<u64>,
+    pub error_message: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub enum ParallelProcessStatus {
+    Queued,
+    Running,
+    Completed,
+    Failed,
+    Cancelled,
+}
+
+#[derive(Debug, Clone, Copy, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub enum ParallelOperationStatus {
+    Pending,
+    Running,
+    Completed,
+    Failed,
+    Cancelled,
+}
+
+#[derive(Debug, Clone, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub struct PerformanceMetrics {
+    pub metrics_id: u64,
+    pub contract_address: AccountId,
+    pub total_gas_used: u64,
+    pub average_gas_per_operation: u64,
+    pub total_transactions: u64,
+    pub successful_transactions: u64,
+    pub failed_transactions: u64,
+    pub storage_size: u64,
+    pub optimization_score: u16, // 0-1000 basis points
+    pub performance_rating: PerformanceRating,
+    pub last_updated: u64,
+}
+
+#[derive(Debug, Clone, Copy, Encode, Decode, PartialEq, Eq, TypeInfo)]
+#[cfg_attr(feature = "std", derive(StorageLayout))]
+pub enum PerformanceRating {
+    Excellent, // 90-100%
+    Good,      // 70-89%
+    Average,   // 50-69%
+    Poor,      // 30-49%
+    Critical,  // 0-29%
+} 
