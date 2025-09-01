@@ -18,6 +18,7 @@ pub enum LendingError {
     UserNotFound,
     InvalidBenchmarkData,
     ReportGenerationFailed,
+    InvalidStatus,
 }
 
 impl From<LendingError> for String {
@@ -39,6 +40,7 @@ impl From<LendingError> for String {
             LendingError::UserNotFound => "User not found".into(),
             LendingError::InvalidBenchmarkData => "Invalid benchmark data".into(),
             LendingError::ReportGenerationFailed => "Report generation failed".into(),
+            LendingError::InvalidStatus => "Invalid status".into(),
         }
     }
 } 
