@@ -15,6 +15,10 @@ pub enum LendingError {
     InvalidAmount,
     LoanExpired,
     CollateralSeized,
+    UserNotFound,
+    InvalidBenchmarkData,
+    ReportGenerationFailed,
+    InvalidStatus,
 }
 
 impl From<LendingError> for String {
@@ -33,6 +37,10 @@ impl From<LendingError> for String {
             LendingError::InvalidAmount => "Invalid amount".into(),
             LendingError::LoanExpired => "Loan has expired".into(),
             LendingError::CollateralSeized => "Collateral has been seized".into(),
+            LendingError::UserNotFound => "User not found".into(),
+            LendingError::InvalidBenchmarkData => "Invalid benchmark data".into(),
+            LendingError::ReportGenerationFailed => "Report generation failed".into(),
+            LendingError::InvalidStatus => "Invalid status".into(),
         }
     }
 } 

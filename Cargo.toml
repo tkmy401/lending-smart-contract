@@ -2,7 +2,7 @@
 name = "lending-smart-contract"
 version = "0.1.0"
 edition = "2021"
-authors = ["Your Name <your.email@example.com>"]
+authors = ["tkmy401 <hirokiyoshigawa@gmail.com>"]
 description = "A professional lending smart contract built with Rust"
 license = "MIT"
 
